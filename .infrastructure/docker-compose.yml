@@ -1,0 +1,68 @@
+name: robot-fleet
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: robot_fleet
+      POSTGRES_USER: robot
+      POSTGRES_PASSWORD: robot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U robot -d robot_fleet"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ..
+      dockerfile: .infrastructure/backend.Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://robot:robot@postgres:5432/robot_fleet
+      OFFLINE_AFTER_SECONDS: "45"
+      CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  simulator:
+    build:
+      context: ..
+      dockerfile: .infrastructure/simulator.Dockerfile
+    environment:
+      BACKEND_BASE_URL: http://backend:8000
+      ROBOT_COUNT: "5000"
+      HEARTBEAT_INTERVAL_SECONDS: "60"
+      MAX_CONCURRENT_REQUESTS: "100"
+      DOWNTIME_PROBABILITY: "0.03"
+      MIN_DOWNTIME_SECONDS: "60"
+      MAX_DOWNTIME_SECONDS: "120"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: .infrastructure/frontend.Dockerfile
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

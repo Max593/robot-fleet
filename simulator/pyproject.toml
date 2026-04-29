@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robot-fleet-simulator"
+version = "0.1.0"
+description = "Async robot simulator for the local robot fleet operations MVP."
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27.2",
+    "pydantic-settings>=2.6.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["simulator*"]

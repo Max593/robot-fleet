@@ -101,3 +101,46 @@ cd backend
 alembic revision --autogenerate -m "describe change"
 alembic upgrade head
 ```
+
+## Linting And Formatting
+
+Python linting and formatting are handled by Ruff. The repository uses a root-level `ruff.toml` so the backend and simulator share one policy.
+
+Install the development tools from the repository root:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+```
+
+Run Ruff manually:
+
+```bash
+ruff check backend simulator
+ruff format backend simulator
+```
+
+Install the Git hook:
+
+```bash
+pre-commit install
+```
+
+After that, every commit runs:
+
+```text
+ruff check --fix
+ruff format
+```
+
+If Ruff modifies files during a commit, review the changes, stage them, and commit again.
+
+Frontend validation currently uses TypeScript:
+
+```bash
+cd frontend
+npm run typecheck
+```
+
+ESLint can be added later if the frontend grows enough to need a dedicated linting policy.

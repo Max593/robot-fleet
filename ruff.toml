@@ -1,0 +1,26 @@
+target-version = "py312"
+line-length = 120
+
+extend-exclude = [
+  "backend/alembic/versions",
+]
+
+[lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "B",
+  "UP",
+]
+ignore = [
+  "B008",
+]
+
+[lint.isort]
+known-first-party = ["app", "simulator"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"

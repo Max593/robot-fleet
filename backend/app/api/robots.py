@@ -26,6 +26,4 @@ def get_robot_statuses(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RobotStatusListResponse:
-    return RobotStatusListResponse(
-        robots=list_robot_statuses(db, offline_after_seconds=settings.offline_after_seconds)
-    )
+    return RobotStatusListResponse(robots=list_robot_statuses(db, offline_after_seconds=settings.offline_after_seconds))

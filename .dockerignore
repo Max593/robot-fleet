@@ -3,6 +3,7 @@
 .codex
 .env
 .DS_Store
+.cache
 **/__pycache__
 **/*.pyc
 **/.pytest_cache

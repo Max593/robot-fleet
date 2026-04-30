@@ -1,7 +1,7 @@
 <h1 align="center">Robot Fleet Operations</h1>
 
 <p align="center">
-  <img src="docs/assets/dashboard.png" alt="Robot Fleet Operations dashboard">
+  <img src="docs/assets/dashboard-demo.gif" alt="Robot Fleet Operations dashboard demo">
 </p>
 
 Robot Fleet Operations is a proof of concept for a local robot fleet monitoring platform. It simulates thousands of robots reporting heartbeats, status, and battery levels to a FastAPI backend, stores fleet state in PostgreSQL, and presents the current system state through a lightweight operations dashboard.

@@ -13,5 +13,8 @@ class Settings(BaseSettings):
     max_downtime_seconds: float = Field(default=120.0, ge=0)
     status_change_probability: float = Field(default=0.15, ge=0, le=1)
     startup_jitter_seconds: float = Field(default=15.0, ge=0)
+    command_poll_interval_seconds: float = Field(default=30.0, gt=0)
+    diagnostic_duration_seconds: float = Field(default=20.0, gt=0)
+    return_to_base_duration_seconds: float = Field(default=45.0, gt=0)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

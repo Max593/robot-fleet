@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import random
+import time
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -29,6 +31,39 @@ class RobotState:
             self.status = "idle"
 
 
+@dataclass
+class RobotControlState:
+    paused_until: float | None = None
+    paused_until_resumed: bool = False
+    forced_status: str | None = None
+    forced_status_until: float | None = None
+
+    def is_paused(self, now: float) -> bool:
+        if self.paused_until_resumed:
+            return True
+        if self.paused_until is None:
+            return False
+        if now < self.paused_until:
+            return True
+
+        self.paused_until = None
+        return False
+
+    def effective_status(self, now: float) -> str | None:
+        if self.forced_status_until is None or self.forced_status is None:
+            return None
+        if now < self.forced_status_until:
+            return self.forced_status
+
+        self.forced_status = None
+        self.forced_status_until = None
+        return None
+
+    def resume(self) -> None:
+        self.paused_until = None
+        self.paused_until_resumed = False
+
+
 async def simulate_robot(
     robot_number: int,
     client: httpx.AsyncClient,
@@ -36,17 +71,34 @@ async def simulate_robot(
     request_gate: asyncio.Semaphore,
 ) -> None:
     state = RobotState(robot_id=f"robot-{robot_number:06d}", battery_level=random.randint(40, 100))
+    control_state = RobotControlState()
+    next_command_poll_at = 0.0
 
     if settings.startup_jitter_seconds > 0:
         await asyncio.sleep(random.uniform(0, settings.startup_jitter_seconds))
 
     while True:
+        now = time.monotonic()
+        if now >= next_command_poll_at:
+            await _poll_and_apply_command(client, request_gate, state, control_state, settings)
+            next_command_poll_at = _next_command_poll_at(settings)
+
+        if control_state.is_paused(time.monotonic()):
+            await asyncio.sleep(min(settings.command_poll_interval_seconds, settings.heartbeat_interval_seconds))
+            continue
+
         if random.random() < settings.downtime_probability:
             downtime = random.uniform(settings.min_downtime_seconds, settings.max_downtime_seconds)
             logger.debug("%s offline for %.1fs", state.robot_id, downtime)
             await asyncio.sleep(downtime)
 
-        state.tick(settings.status_change_probability)
+        forced_status = control_state.effective_status(time.monotonic())
+        if forced_status:
+            state.status = forced_status
+            state.tick(status_change_probability=0)
+        else:
+            state.tick(settings.status_change_probability)
+
         await _post(client, request_gate, f"/robot/{state.robot_id}/ping", json=None)
         await _post(
             client,
@@ -57,7 +109,125 @@ async def simulate_robot(
 
         heartbeat_jitter = random.uniform(-0.15, 0.15) * settings.heartbeat_interval_seconds
         sleep_for = max(1.0, settings.heartbeat_interval_seconds + heartbeat_jitter)
-        await asyncio.sleep(sleep_for)
+        next_command_poll_at = await _sleep_with_command_polling(
+            client,
+            request_gate,
+            state,
+            control_state,
+            settings,
+            sleep_for,
+            next_command_poll_at,
+        )
+
+
+async def _sleep_with_command_polling(
+    client: httpx.AsyncClient,
+    request_gate: asyncio.Semaphore,
+    state: RobotState,
+    control_state: RobotControlState,
+    settings: Settings,
+    sleep_for: float,
+    next_command_poll_at: float,
+) -> float:
+    sleep_until = time.monotonic() + sleep_for
+
+    while time.monotonic() < sleep_until:
+        now = time.monotonic()
+        if now >= next_command_poll_at:
+            await _poll_and_apply_command(client, request_gate, state, control_state, settings)
+            next_command_poll_at = _next_command_poll_at(settings)
+            if control_state.is_paused(time.monotonic()):
+                return next_command_poll_at
+
+        await asyncio.sleep(min(1.0, sleep_until - time.monotonic()))
+
+    return next_command_poll_at
+
+
+async def _poll_and_apply_command(
+    client: httpx.AsyncClient,
+    request_gate: asyncio.Semaphore,
+    state: RobotState,
+    control_state: RobotControlState,
+    settings: Settings,
+) -> None:
+    command = await _get_next_command(client, request_gate, state.robot_id)
+    if command is None:
+        return
+
+    try:
+        result = _apply_command(command, control_state, settings)
+        await _post(
+            client,
+            request_gate,
+            f"/robot/{state.robot_id}/commands/{command['id']}/complete",
+            json={"success": True, "result": result},
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        await _post(
+            client,
+            request_gate,
+            f"/robot/{state.robot_id}/commands/{command['id']}/complete",
+            json={"success": False, "error_message": str(exc)},
+        )
+
+
+def _apply_command(
+    command: dict[str, Any],
+    control_state: RobotControlState,
+    settings: Settings,
+) -> dict[str, Any]:
+    command_type = command["command_type"]
+    payload = command.get("payload") or {}
+    now = time.monotonic()
+
+    if command_type == "pause_for":
+        duration_seconds = float(payload["duration_seconds"])
+        control_state.paused_until = now + duration_seconds
+        control_state.paused_until_resumed = False
+        return {"paused_for_seconds": duration_seconds}
+
+    if command_type == "pause_until_resumed":
+        control_state.paused_until = None
+        control_state.paused_until_resumed = True
+        return {"paused_until_resumed": True}
+
+    if command_type == "resume":
+        control_state.resume()
+        return {"resumed": True}
+
+    if command_type == "run_diagnostic":
+        control_state.forced_status = "running"
+        control_state.forced_status_until = now + settings.diagnostic_duration_seconds
+        return {"forced_status": "running", "duration_seconds": settings.diagnostic_duration_seconds}
+
+    if command_type == "return_to_base":
+        control_state.forced_status = "running"
+        control_state.forced_status_until = now + settings.return_to_base_duration_seconds
+        return {"forced_status": "running", "duration_seconds": settings.return_to_base_duration_seconds}
+
+    raise ValueError(f"unsupported command type {command_type}")
+
+
+async def _get_next_command(
+    client: httpx.AsyncClient,
+    request_gate: asyncio.Semaphore,
+    robot_id: str,
+) -> dict[str, Any] | None:
+    try:
+        async with request_gate:
+            response = await client.get(f"/robot/{robot_id}/commands/next")
+            response.raise_for_status()
+            data = response.json()
+            return data.get("command")
+    except httpx.HTTPError as exc:
+        logger.warning("command poll failed for %s: %s", robot_id, exc)
+        return None
+
+
+def _next_command_poll_at(settings: Settings) -> float:
+    jitter = random.uniform(-0.15, 0.15) * settings.command_poll_interval_seconds
+    return time.monotonic() + max(1.0, settings.command_poll_interval_seconds + jitter)
 
 
 async def _post(

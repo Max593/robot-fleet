@@ -8,7 +8,7 @@ Robot Fleet Operations is a proof of concept for a local robot fleet monitoring 
 
 The project is simulation-first. Robot behavior such as downtime, status changes, and battery movement is generated locally, which makes it possible to explore backend reliability, state management, and observability patterns without physical hardware.
 
-The current version focuses on heartbeat monitoring and fleet state. The project is designed to evolve toward command dispatch, telemetry ingestion, Redis/WebSocket workflows, and Prometheus/Grafana observability.
+The current version focuses on heartbeat monitoring, fleet state, and a first command-dispatch workflow. The project is designed to evolve toward telemetry ingestion, Redis/WebSocket workflows, and Prometheus/Grafana observability.
 
 ## Overview
 
@@ -18,6 +18,7 @@ The goal of the first version is to make the core workflow tangible:
 
 ```text
 robot checks in -> backend stores state -> dashboard shows fleet status
+operator queues command -> simulator claims command -> backend stores result
 ```
 
 From there, the project can grow into more operational workflows: sending commands to robots, collecting telemetry, exposing metrics, and visualizing system behavior over time.
@@ -28,21 +29,22 @@ From there, the project can grow into more operational workflows: sending comman
 - Tracks robot heartbeat, status, battery level, and last-seen time
 - Detects online/offline state from heartbeat freshness
 - Stores latest fleet state in PostgreSQL
-- Records lightweight robot events for audit/history
+- Records significant robot events for audit/history without logging every heartbeat
 - Provides a dashboard with backend-side search, pagination, page-size controls, and status filters
+- Queues one-robot commands and tracks command completion history
 - Runs locally with Docker Compose
 - Applies database migrations automatically on backend startup
 
 ## System Architecture
 
 ```text
-simulator -> FastAPI backend -> PostgreSQL
-frontend  -> FastAPI backend
+simulator <-> FastAPI backend -> PostgreSQL
+frontend   -> FastAPI backend
 ```
 
 The simulator runs many lightweight asyncio tasks inside one Python process. Request concurrency is capped independently from robot count, so the simulator can model thousands of robots without opening thousands of simultaneous HTTP requests.
 
-The backend owns the API, database access, and fleet-state rules. PostgreSQL stores the latest robot state and a lightweight event history. The frontend polls the backend and presents the current status of the fleet.
+The backend owns the API, database access, fleet-state rules, and command lifecycle. PostgreSQL stores the latest robot state, significant event history, and command history. The frontend polls the backend and presents the current status of the fleet.
 
 ## Running Locally
 
@@ -74,9 +76,6 @@ The backend runs Alembic automatically on startup, so a fresh database volume is
 
 ## Roadmap
 
-- Robot command dispatch
-- Command result reporting
-- Backend-side pagination and filtering
 - Telemetry ingestion
 - Prometheus metrics endpoint
 - Grafana dashboard

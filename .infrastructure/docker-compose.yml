@@ -24,6 +24,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://robot:robot@postgres:5432/robot_fleet
       OFFLINE_AFTER_SECONDS: "45"
+      COMMAND_RETENTION_DAYS: "30"
+      EVENT_RETENTION_DAYS: "7"
       CORS_ORIGINS: http://localhost:5173,http://localhost:8080
     ports:
       - "8000:8000"
@@ -48,6 +50,9 @@ services:
       DOWNTIME_PROBABILITY: "0.03"
       MIN_DOWNTIME_SECONDS: "60"
       MAX_DOWNTIME_SECONDS: "120"
+      COMMAND_POLL_INTERVAL_SECONDS: "30"
+      DIAGNOSTIC_DURATION_SECONDS: "20"
+      RETURN_TO_BASE_DURATION_SECONDS: "45"
     depends_on:
       backend:
         condition: service_healthy

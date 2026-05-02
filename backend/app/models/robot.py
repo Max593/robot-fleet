@@ -1,10 +1,12 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import JSON, BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+json_document_type = JSONB().with_variant(JSON(), "sqlite")
 
 
 class Robot(Base):
@@ -34,6 +36,11 @@ class Robot(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    commands: Mapped[list["RobotCommand"]] = relationship(
+        back_populates="robot",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class RobotEvent(Base):
@@ -49,7 +56,37 @@ class RobotEvent(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     robot_id: Mapped[str] = mapped_column(String(64), ForeignKey("robots.robot_id", ondelete="CASCADE"), index=True)
     event_type: Mapped[str] = mapped_column(String(64))
-    payload: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    payload: Mapped[dict] = mapped_column(json_document_type, default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     robot: Mapped[Robot] = relationship(back_populates="events")
+
+
+class RobotCommand(Base):
+    __tablename__ = "robot_commands"
+    __table_args__ = (
+        CheckConstraint(
+            "command_type IN ('run_diagnostic', 'pause_for', 'pause_until_resumed', 'resume', 'return_to_base')",
+            name="ck_robot_commands_command_type",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'claimed', 'completed', 'failed', 'expired', 'cancelled')",
+            name="ck_robot_commands_status",
+        ),
+        Index("ix_robot_commands_robot_status_created_at", "robot_id", "status", "created_at"),
+        Index("ix_robot_commands_status_created_at", "status", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    robot_id: Mapped[str] = mapped_column(String(64), ForeignKey("robots.robot_id", ondelete="CASCADE"), index=True)
+    command_type: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(json_document_type, default=dict, server_default="{}")
+    status: Mapped[str] = mapped_column(String(32), default="pending", server_default="pending")
+    result: Mapped[dict | None] = mapped_column(json_document_type, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    robot: Mapped[Robot] = relationship(back_populates="commands")

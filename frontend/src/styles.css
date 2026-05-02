@@ -208,6 +208,58 @@ h2 {
   border: 1px solid #fac7c2;
 }
 
+.notice.success {
+  color: #087f5b;
+  background: #ecfdf3;
+  border: 1px solid #abefc6;
+}
+
+.toastStack {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 30;
+  display: grid;
+  width: min(360px, calc(100vw - 36px));
+  gap: 8px;
+}
+
+.toastNotice {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+  padding: 10px 12px;
+  color: #087f5b;
+  background: #ecfdf3;
+  border: 1px solid #abefc6;
+  border-radius: 8px;
+  box-shadow: 0 12px 34px rgb(15 23 42 / 16%);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.toastNotice span {
+  min-width: 0;
+}
+
+.toastNotice button {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.toastNotice button:hover {
+  background: #d1fadf;
+}
+
 .tableSection {
   margin-top: 24px;
 }
@@ -300,7 +352,7 @@ h2 {
 
 table {
   width: 100%;
-  min-width: 720px;
+  min-width: 860px;
   border-collapse: collapse;
 }
 
@@ -464,6 +516,125 @@ tr:last-child td {
   color: #344054;
   font-weight: 700;
   text-align: center;
+}
+
+.commandButton,
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  gap: 7px;
+  border-radius: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.commandButton {
+  padding: 0 10px;
+  color: #1d4f91;
+  background: #ffffff;
+  border: 1px solid #ccd6e4;
+}
+
+.commandButton:hover {
+  background: #eef5ff;
+  border-color: #9bb9df;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(15 23 42 / 42%);
+}
+
+.commandDialog {
+  width: min(420px, 100%);
+  padding: 20px;
+  background: #ffffff;
+  border: 1px solid #dfe4ec;
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgb(15 23 42 / 22%);
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.fieldControl {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: #526071;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.fieldControl select {
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  color: #18202f;
+  background: #ffffff;
+  border: 1px solid #ccd6e4;
+  border-radius: 8px;
+}
+
+.fieldControl select:focus {
+  border-color: #8fb5e3;
+  box-shadow: 0 0 0 3px #dbeafe;
+  outline: 0;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.dialogNotice {
+  margin: 12px 0 0;
+}
+
+.primaryButton,
+.secondaryButton {
+  padding: 0 14px;
+}
+
+.primaryButton {
+  color: #ffffff;
+  background: #1d4f91;
+  border: 1px solid #1d4f91;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: #174278;
+}
+
+.secondaryButton {
+  color: #344054;
+  background: #ffffff;
+  border: 1px solid #ccd6e4;
+}
+
+.secondaryButton:hover {
+  background: #f3f6fa;
+}
+
+.primaryButton:disabled {
+  color: #e4e9f1;
+  background: #7a93b4;
+  border-color: #7a93b4;
 }
 
 @media (max-width: 900px) {

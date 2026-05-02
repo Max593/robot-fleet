@@ -14,11 +14,16 @@ DOWNTIME_PROBABILITY=0.03
 MIN_DOWNTIME_SECONDS=60
 MAX_DOWNTIME_SECONDS=120
 OFFLINE_AFTER_SECONDS=45
+COMMAND_RETENTION_DAYS=30
+EVENT_RETENTION_DAYS=7
+COMMAND_POLL_INTERVAL_SECONDS=30
 ```
 
 Each robot periodically sends a heartbeat and a state update. Status and battery level change locally inside the simulator. Downtime is simulated by pausing a robot loop so it stops sending updates for a short period.
 
 `MAX_CONCURRENT_REQUESTS` limits simultaneous simulator HTTP requests even when thousands of robot tasks are running.
+
+Robots also poll for queued commands. Command overrides take priority over autonomous behavior while they are active, then the robot returns to the regular simulator loop.
 
 Downtime must be longer than the backend `OFFLINE_AFTER_SECONDS` threshold to become visible as offline in the dashboard. The default values use a 45-second offline threshold and 60-120 second downtime windows so short outages are visible but robots return quickly.
 
@@ -32,6 +37,10 @@ Current endpoints:
 POST /robot/{robot_id}/ping
 POST /robot/{robot_id}/update
 GET /robots/status
+POST /robots/{robot_id}/commands
+GET /robots/{robot_id}/commands
+GET /robot/{robot_id}/commands/next
+POST /robot/{robot_id}/commands/{command_id}/complete
 ```
 
 `GET /robots/status` supports backend-side pagination and dashboard filters:
@@ -85,14 +94,37 @@ curl -X POST http://localhost:8000/robot/robot-000001/update \
   -d '{"status":"running","battery_level":82}'
 ```
 
+Operator command creation:
+
+```bash
+curl -X POST http://localhost:8000/robots/robot-000001/commands \
+  -H "content-type: application/json" \
+  -d '{"command_type":"pause_for","payload":{"duration_seconds":60}}'
+```
+
+Supported command types are:
+
+```text
+run_diagnostic / pause_for / pause_until_resumed / resume / return_to_base
+```
+
+The simulator claims pending commands through `GET /robot/{robot_id}/commands/next` and reports the outcome through `POST /robot/{robot_id}/commands/{command_id}/complete`. The current implementation keeps command override state in simulator memory. Command history is persisted in PostgreSQL, but active runtime overrides reset when the simulator container restarts.
+
 ## Database And Migrations
 
-PostgreSQL stores the current robot state and a lightweight event history.
+PostgreSQL stores the current robot state, command history, and significant event history.
 
-Initial tables:
+Current tables:
 
 - `robots`: latest known state for each robot
-- `robot_events`: heartbeat and status-update history
+- `robot_events`: significant event history such as command results
+- `robot_commands`: command queue, lifecycle state, payloads, results, and retention history
+
+`COMMAND_RETENTION_DAYS` controls command cleanup. On backend startup, terminal command rows older than the retention window are deleted. Active commands are not deleted by cleanup.
+
+`EVENT_RETENTION_DAYS` controls event cleanup. Routine heartbeat and status-update calls update the `robots` current-state table but are not inserted into `robot_events`; this keeps the simulator from producing high-volume audit rows for normal traffic.
+
+Retention cleanup currently runs from FastAPI lifespan startup, so it executes when the backend process starts or restarts. It does not run on every request. A scheduled cleanup worker can be added later if the backend needs to stay online for long periods without restarts.
 
 Schema migrations are managed with Alembic from `backend/alembic`. The backend container runs:
 

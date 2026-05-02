@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Activity,
@@ -11,8 +11,11 @@ import {
   CirclePlay,
   RefreshCw,
   Search,
+  Send,
+  Terminal,
   Wifi,
-  WifiOff
+  WifiOff,
+  X
 } from "lucide-react";
 
 type Robot = {
@@ -31,6 +34,12 @@ type RobotsResponse = {
 };
 
 type StatusFilter = "all" | "online" | "offline" | "running" | "idle";
+type CommandType = "run_diagnostic" | "pause_for" | "pause_until_resumed" | "resume" | "return_to_base";
+
+type Toast = {
+  id: number;
+  message: string;
+};
 
 type Pagination = {
   total: number;
@@ -49,6 +58,14 @@ type FleetSummary = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const pageSizeOptions = [10, 25, 50, 100];
+const pauseDurationOptions = [30, 60, 120, 300];
+const commandLabels: Record<CommandType, string> = {
+  run_diagnostic: "Run diagnostic",
+  pause_for: "Pause for",
+  pause_until_resumed: "Pause until resumed",
+  resume: "Resume",
+  return_to_base: "Return to base"
+};
 const initialPagination: Pagination = {
   total: 0,
   page: 1,
@@ -74,6 +91,12 @@ function App() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [selectedRobot, setSelectedRobot] = useState<Robot | null>(null);
+  const [selectedCommand, setSelectedCommand] = useState<CommandType>("run_diagnostic");
+  const [pauseDuration, setPauseDuration] = useState(30);
+  const [isSendingCommand, setIsSendingCommand] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [commandError, setCommandError] = useState<string | null>(null);
 
   const loadRobots = useCallback(async () => {
     try {
@@ -129,6 +152,64 @@ function App() {
   const updatePageSize = (value: string) => {
     setPageSize(Number(value));
     setCurrentPage(1);
+  };
+
+  const dismissToast = useCallback((toastId: number) => {
+    setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
+  }, []);
+
+  const addToast = useCallback(
+    (message: string) => {
+      const toastId = Date.now() + Math.random();
+      setToasts((currentToasts) => [...currentToasts, { id: toastId, message }]);
+      window.setTimeout(() => dismissToast(toastId), 10000);
+    },
+    [dismissToast]
+  );
+
+  const openCommandDialog = (robot: Robot) => {
+    setSelectedRobot(robot);
+    setSelectedCommand("run_diagnostic");
+    setPauseDuration(30);
+    setCommandError(null);
+  };
+
+  const sendCommand = async () => {
+    if (selectedRobot === null) {
+      return;
+    }
+
+    try {
+      setIsSendingCommand(true);
+      setCommandError(null);
+      const payload =
+        selectedCommand === "pause_for"
+          ? {
+              duration_seconds: pauseDuration
+            }
+          : {};
+
+      const response = await fetch(`${apiBaseUrl}/robots/${selectedRobot.robot_id}/commands`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          command_type: selectedCommand,
+          payload
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Backend returned ${response.status}`);
+      }
+
+      addToast(`${commandLabels[selectedCommand]} queued for ${selectedRobot.robot_id}`);
+      setSelectedRobot(null);
+    } catch (err) {
+      setCommandError(err instanceof Error ? err.message : "Unable to queue command");
+    } finally {
+      setIsSendingCommand(false);
+    }
   };
 
   return (
@@ -190,6 +271,18 @@ function App() {
       </section>
 
       {error ? <div className="notice error">{error}</div> : null}
+      {toasts.length > 0 ? (
+        <div className="toastStack" aria-live="polite" aria-label="Notifications">
+          {toasts.map((toast) => (
+            <div className="toastNotice" role="status" key={toast.id}>
+              <span>{toast.message}</span>
+              <button type="button" onClick={() => dismissToast(toast.id)} aria-label="Dismiss notification">
+                <X size={15} aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <section className="tableSection" aria-label="Robot status table">
         <div className="sectionHeader">
@@ -229,6 +322,7 @@ function App() {
                 <th>Status</th>
                 <th>Battery</th>
                 <th>Last seen</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -245,6 +339,12 @@ function App() {
                     <BatteryCell level={robot.battery_level} />
                   </td>
                   <td>{formatLastSeen(robot.last_seen_seconds_ago)}</td>
+                  <td>
+                    <button className="commandButton" type="button" onClick={() => openCommandDialog(robot)}>
+                      <Terminal size={15} aria-hidden="true" />
+                      Command
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -304,6 +404,58 @@ function App() {
           </div>
         </div>
       </section>
+
+      {selectedRobot ? (
+        <div className="modalBackdrop" role="presentation">
+          <section className="commandDialog" role="dialog" aria-modal="true" aria-labelledby="commandDialogTitle">
+            <div className="dialogHeader">
+              <div>
+                <p className="eyebrow">Robot Command</p>
+                <h2 id="commandDialogTitle">{selectedRobot.robot_id}</h2>
+              </div>
+              <button className="iconButton" type="button" onClick={() => setSelectedRobot(null)} aria-label="Close command dialog">
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <label className="fieldControl">
+              <span>Command</span>
+              <select value={selectedCommand} onChange={(event) => setSelectedCommand(event.target.value as CommandType)}>
+                {(Object.keys(commandLabels) as CommandType[]).map((commandType) => (
+                  <option key={commandType} value={commandType}>
+                    {commandLabels[commandType]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {selectedCommand === "pause_for" ? (
+              <label className="fieldControl">
+                <span>Duration</span>
+                <select value={pauseDuration} onChange={(event) => setPauseDuration(Number(event.target.value))}>
+                  {pauseDurationOptions.map((duration) => (
+                    <option key={duration} value={duration}>
+                      {duration}s
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            {commandError ? <div className="notice error dialogNotice">{commandError}</div> : null}
+
+            <div className="dialogActions">
+              <button className="secondaryButton" type="button" onClick={() => setSelectedRobot(null)}>
+                Cancel
+              </button>
+              <button className="primaryButton" type="button" onClick={() => void sendCommand()} disabled={isSendingCommand}>
+                <Send size={16} aria-hidden="true" />
+                {isSendingCommand ? "Sending" : "Send"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

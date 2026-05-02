@@ -186,3 +186,73 @@ def test_list_commands_expires_overdue_pending_commands(db: Session) -> None:
     assert len(commands) == 1
     assert commands[0].status == RobotCommandStatus.EXPIRED.value
     assert commands[0].completed_at == now.replace(tzinfo=None)
+
+
+def test_list_commands_page_returns_newest_commands_first(db: Session) -> None:
+    now = datetime(2026, 5, 2, tzinfo=UTC)
+    repository = RobotRepository(db)
+
+    db.add(Robot(robot_id="robot-000001"))
+    db.flush()
+    db.add_all(
+        [
+            RobotCommand(
+                id=1,
+                robot_id="robot-000001",
+                command_type="run_diagnostic",
+                status="completed",
+                created_at=now - timedelta(minutes=3),
+            ),
+            RobotCommand(
+                id=2,
+                robot_id="robot-000001",
+                command_type="return_to_base",
+                status="completed",
+                created_at=now - timedelta(minutes=2),
+            ),
+            RobotCommand(
+                id=3,
+                robot_id="robot-000001",
+                command_type="recharge_to_full",
+                status="pending",
+                created_at=now - timedelta(minutes=1),
+                expires_at=now + timedelta(minutes=2),
+            ),
+        ]
+    )
+    db.commit()
+
+    commands = repository.list_commands_page("robot-000001", page=1, page_size=2, now=now)
+
+    assert [command.id for command in commands] == [3, 2]
+
+
+def test_list_events_page_returns_newest_events_first(db: Session) -> None:
+    now = datetime(2026, 5, 2, tzinfo=UTC)
+    repository = RobotRepository(db)
+
+    db.add(Robot(robot_id="robot-000001"))
+    db.flush()
+    db.add_all(
+        [
+            RobotEvent(
+                id=1,
+                robot_id="robot-000001",
+                event_type="command_result",
+                payload={"command_id": 1},
+                created_at=now - timedelta(minutes=2),
+            ),
+            RobotEvent(
+                id=2,
+                robot_id="robot-000001",
+                event_type="command_result",
+                payload={"command_id": 2},
+                created_at=now - timedelta(minutes=1),
+            ),
+        ]
+    )
+    db.commit()
+
+    events = repository.list_events_page("robot-000001", page=1, page_size=10)
+
+    assert [event.id for event in events] == [2, 1]

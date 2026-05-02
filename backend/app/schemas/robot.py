@@ -77,8 +77,26 @@ class RobotCommandResponse(BaseModel):
     expires_at: datetime | None
 
 
+class RobotCommandListResponse(BaseModel):
+    commands: list[RobotCommandResponse]
+    pagination: "RobotStatusPagination"
+
+
 class RobotCommandNextResponse(BaseModel):
     command: RobotCommandResponse | None = None
+
+
+class RobotEventResponse(BaseModel):
+    id: int
+    robot_id: str
+    event_type: str
+    payload: dict[str, Any]
+    created_at: datetime
+
+
+class RobotEventListResponse(BaseModel):
+    events: list[RobotEventResponse]
+    pagination: "RobotStatusPagination"
 
 
 class RobotStatusResponse(BaseModel):

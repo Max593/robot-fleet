@@ -9,17 +9,22 @@ from app.schemas.robot import (
     RobotAckResponse,
     RobotCommandCompleteRequest,
     RobotCommandCreateRequest,
+    RobotCommandListResponse,
     RobotCommandNextResponse,
     RobotCommandResponse,
+    RobotEventListResponse,
     RobotStatusFilter,
     RobotStatusListResponse,
+    RobotStatusResponse,
     RobotUpdateRequest,
 )
 from app.services.robots import (
     claim_next_robot_command,
     complete_robot_command,
     create_robot_command,
-    list_robot_commands,
+    get_robot_status,
+    list_robot_command_page,
+    list_robot_event_page,
     list_robot_status_page,
     record_ping,
     record_update,
@@ -62,13 +67,30 @@ def create_command(
     return command
 
 
-@router.get("/robots/{robot_id}/commands", response_model=list[RobotCommandResponse])
+@router.get("/robots/{robot_id}/commands", response_model=RobotCommandListResponse)
 def get_robot_commands(
     robot_id: str,
-    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
     db: Session = Depends(get_db),
-) -> list[RobotCommandResponse]:
-    return list_robot_commands(db, robot_id, limit=limit)
+) -> RobotCommandListResponse:
+    commands = list_robot_command_page(db, robot_id, page=page, page_size=page_size)
+    if commands is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Robot not found")
+    return commands
+
+
+@router.get("/robots/{robot_id}/events", response_model=RobotEventListResponse)
+def get_robot_events(
+    robot_id: str,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+    db: Session = Depends(get_db),
+) -> RobotEventListResponse:
+    events = list_robot_event_page(db, robot_id, page=page, page_size=page_size)
+    if events is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Robot not found")
+    return events
 
 
 @router.get("/robot/{robot_id}/commands/next", response_model=RobotCommandNextResponse)
@@ -106,3 +128,15 @@ def get_robot_statuses(
         search=search,
         status_filter=status_filter,
     )
+
+
+@router.get("/robots/{robot_id}", response_model=RobotStatusResponse)
+def get_robot(
+    robot_id: str,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> RobotStatusResponse:
+    robot = get_robot_status(db, robot_id, offline_after_seconds=settings.offline_after_seconds)
+    if robot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Robot not found")
+    return robot

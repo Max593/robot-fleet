@@ -75,6 +75,7 @@ class RobotCommand(Base):
             "status IN ('pending', 'claimed', 'completed', 'failed', 'expired', 'cancelled')",
             name="ck_robot_commands_status",
         ),
+        Index("ix_robot_commands_robot_created_at", "robot_id", "created_at"),
         Index("ix_robot_commands_robot_status_created_at", "robot_id", "status", "created_at"),
         Index("ix_robot_commands_status_created_at", "status", "created_at"),
     )

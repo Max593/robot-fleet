@@ -95,6 +95,38 @@ class RobotRepository:
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def count_commands(self, robot_id: str, now: datetime) -> int:
+        self.expire_pending_commands(now)
+        stmt = select(func.count(RobotCommand.id)).where(RobotCommand.robot_id == robot_id)
+        return int(self.db.execute(stmt).scalar_one())
+
+    def list_commands_page(self, robot_id: str, page: int, page_size: int, now: datetime) -> list[RobotCommand]:
+        self.expire_pending_commands(now)
+        offset = (page - 1) * page_size
+        stmt = (
+            select(RobotCommand)
+            .where(RobotCommand.robot_id == robot_id)
+            .order_by(RobotCommand.created_at.desc(), RobotCommand.id.desc())
+            .limit(page_size)
+            .offset(offset)
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
+    def count_events(self, robot_id: str) -> int:
+        stmt = select(func.count(RobotEvent.id)).where(RobotEvent.robot_id == robot_id)
+        return int(self.db.execute(stmt).scalar_one())
+
+    def list_events_page(self, robot_id: str, page: int, page_size: int) -> list[RobotEvent]:
+        offset = (page - 1) * page_size
+        stmt = (
+            select(RobotEvent)
+            .where(RobotEvent.robot_id == robot_id)
+            .order_by(RobotEvent.created_at.desc(), RobotEvent.id.desc())
+            .limit(page_size)
+            .offset(offset)
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
     def claim_next_command(self, robot_id: str, claimed_at: datetime) -> RobotCommand | None:
         self.expire_pending_commands(claimed_at)
         stmt = (

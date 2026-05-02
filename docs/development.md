@@ -41,6 +41,8 @@ Current endpoints:
 POST /robot/{robot_id}/ping
 POST /robot/{robot_id}/update
 GET /robots/status
+GET /robots/{robot_id}
+GET /robots/{robot_id}/events
 POST /robots/{robot_id}/commands
 GET /robots/{robot_id}/commands
 GET /robot/{robot_id}/commands/next
@@ -89,6 +91,16 @@ The response includes the current page, pagination metadata, and global fleet su
   }
 }
 ```
+
+Robot detail uses the current-state endpoint plus paginated history endpoints:
+
+```text
+GET /robots/robot-000001
+GET /robots/robot-000001/events?page=1&page_size=25
+GET /robots/robot-000001/commands?page=1&page_size=25
+```
+
+Event and command history are ordered newest first. The dashboard links to these views by making each robot row clickable.
 
 Example update:
 

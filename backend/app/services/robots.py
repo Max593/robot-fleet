@@ -5,15 +5,18 @@ from typing import cast
 
 from sqlalchemy.orm import Session
 
-from app.models.robot import Robot, RobotCommand
+from app.models.robot import Robot, RobotCommand, RobotEvent
 from app.repositories.robots import RobotRepository, RobotStatusQuery
 from app.schemas.robot import (
     RobotCommandCompleteRequest,
     RobotCommandCreateRequest,
+    RobotCommandListResponse,
     RobotCommandNextResponse,
     RobotCommandResponse,
     RobotCommandStatus,
     RobotCommandType,
+    RobotEventListResponse,
+    RobotEventResponse,
     RobotFleetSummary,
     RobotState,
     RobotStatusFilter,
@@ -124,6 +127,55 @@ def list_robot_commands(db: Session, robot_id: str, limit: int) -> list[RobotCom
     commands = repository.list_commands(robot_id, limit=limit, now=datetime.now(UTC))
     db.commit()
     return [_to_command_response(command) for command in commands]
+
+
+def get_robot_status(db: Session, robot_id: str, offline_after_seconds: int) -> RobotStatusResponse | None:
+    robot = RobotRepository(db).get_robot(robot_id)
+    if robot is None:
+        return None
+    return _to_status_response(robot, datetime.now(UTC), offline_after_seconds)
+
+
+def list_robot_command_page(db: Session, robot_id: str, page: int, page_size: int) -> RobotCommandListResponse | None:
+    now = datetime.now(UTC)
+    repository = RobotRepository(db)
+    if repository.get_robot(robot_id) is None:
+        return None
+
+    total = repository.count_commands(robot_id, now)
+    total_pages = max(1, ceil(total / page_size))
+    clamped_page = min(page, total_pages)
+    commands = repository.list_commands_page(robot_id, page=clamped_page, page_size=page_size, now=now)
+    db.commit()
+    return RobotCommandListResponse(
+        commands=[_to_command_response(command) for command in commands],
+        pagination=RobotStatusPagination(
+            total=total,
+            page=clamped_page,
+            page_size=page_size,
+            total_pages=total_pages,
+        ),
+    )
+
+
+def list_robot_event_page(db: Session, robot_id: str, page: int, page_size: int) -> RobotEventListResponse | None:
+    repository = RobotRepository(db)
+    if repository.get_robot(robot_id) is None:
+        return None
+
+    total = repository.count_events(robot_id)
+    total_pages = max(1, ceil(total / page_size))
+    clamped_page = min(page, total_pages)
+    events = repository.list_events_page(robot_id, page=clamped_page, page_size=page_size)
+    return RobotEventListResponse(
+        events=[_to_event_response(event) for event in events],
+        pagination=RobotStatusPagination(
+            total=total,
+            page=clamped_page,
+            page_size=page_size,
+            total_pages=total_pages,
+        ),
+    )
 
 
 def cleanup_old_robot_commands(db: Session, retention_days: int) -> int:
@@ -243,6 +295,16 @@ def _to_command_response(command: RobotCommand) -> RobotCommandResponse:
         claimed_at=_ensure_aware(command.claimed_at) if command.claimed_at else None,
         completed_at=_ensure_aware(command.completed_at) if command.completed_at else None,
         expires_at=_ensure_aware(command.expires_at) if command.expires_at else None,
+    )
+
+
+def _to_event_response(event: RobotEvent) -> RobotEventResponse:
+    return RobotEventResponse(
+        id=event.id,
+        robot_id=event.robot_id,
+        event_type=event.event_type,
+        payload=event.payload,
+        created_at=_ensure_aware(event.created_at),
     )
 
 

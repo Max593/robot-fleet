@@ -17,7 +17,7 @@ OFFLINE_AFTER_SECONDS=45
 LOG_LEVEL=INFO
 COMMAND_RETENTION_DAYS=30
 COMMAND_EXPIRATION_SECONDS=120
-EVENT_RETENTION_DAYS=7
+EVENT_RETENTION_DAYS=1
 COMMAND_POLL_INTERVAL_SECONDS=30
 RECHARGE_TICK_SECONDS=5
 RECHARGE_STEP_PERCENT=10
@@ -154,7 +154,7 @@ Current tables:
 
 `COMMAND_RETENTION_DAYS` controls command cleanup. On backend startup, terminal command rows older than the retention window are deleted. Active commands are not deleted by cleanup.
 
-`EVENT_RETENTION_DAYS` controls event cleanup. Routine heartbeat and status-update calls update the `robots` current-state table but are not inserted into `robot_events`; this keeps the simulator from producing high-volume audit rows for normal traffic.
+`EVENT_RETENTION_DAYS` controls event cleanup. It is intentionally short for this simulation because `robot_events` backs recent robot-detail logs rather than long-term analytics. Routine heartbeat and status-update calls update the `robots` current-state table but are not inserted into `robot_events`; this keeps the simulator from producing high-volume audit rows for normal traffic.
 
 Retention cleanup currently runs from FastAPI lifespan startup, so it executes when the backend process starts or restarts. It does not run on every request. A scheduled cleanup worker can be added later if the backend needs to stay online for long periods without restarts.
 

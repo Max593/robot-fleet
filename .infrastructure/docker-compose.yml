@@ -27,7 +27,7 @@ services:
       OFFLINE_AFTER_SECONDS: "45"
       COMMAND_RETENTION_DAYS: "30"
       COMMAND_EXPIRATION_SECONDS: "120"
-      EVENT_RETENTION_DAYS: "7"
+      EVENT_RETENTION_DAYS: "1"
       CORS_ORIGINS: http://localhost:5173,http://localhost:8080
     ports:
       - "8000:8000"

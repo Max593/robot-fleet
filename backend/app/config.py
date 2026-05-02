@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     offline_after_seconds: int = 45
     command_retention_days: int = 30
     command_expiration_seconds: int = 120
-    event_retention_days: int = 7
+    event_retention_days: int = 1
     cors_origins: str = "http://localhost:5173,http://localhost:8080"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

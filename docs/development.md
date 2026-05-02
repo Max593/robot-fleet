@@ -34,6 +34,49 @@ POST /robot/{robot_id}/update
 GET /robots/status
 ```
 
+`GET /robots/status` supports backend-side pagination and dashboard filters:
+
+```text
+GET /robots/status?page=1&page_size=25
+GET /robots/status?page=1&page_size=50&filter=online
+GET /robots/status?page=1&page_size=10&filter=running&search=robot-0001
+```
+
+Supported page sizes in the dashboard are:
+
+```text
+10 / 25 / 50 / 100
+```
+
+Supported filter values are:
+
+```text
+all / online / offline / running / idle
+```
+
+The `running` and `idle` filters currently apply only to robots that are online. Offline robots retain their last reported status in the database, but they are grouped by connectivity first in the dashboard.
+
+The response includes the current page, pagination metadata, and global fleet summary counts:
+
+```json
+{
+  "robots": [],
+  "pagination": {
+    "total": 5000,
+    "page": 1,
+    "page_size": 25,
+    "total_pages": 200
+  },
+  "summary": {
+    "total": 5000,
+    "online": 4864,
+    "offline": 136,
+    "running": 699,
+    "idle": 4165
+  }
+}
+```
+
 Example update:
 
 ```bash

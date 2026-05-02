@@ -1,9 +1,18 @@
 from datetime import datetime
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 RobotState = Literal["idle", "running"]
+
+
+class RobotStatusFilter(str, Enum):
+    ALL = "all"
+    ONLINE = "online"
+    OFFLINE = "offline"
+    RUNNING = "running"
+    IDLE = "idle"
 
 
 class RobotUpdateRequest(BaseModel):
@@ -25,5 +34,22 @@ class RobotStatusResponse(BaseModel):
     is_online: bool
 
 
+class RobotStatusPagination(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class RobotFleetSummary(BaseModel):
+    total: int
+    online: int
+    offline: int
+    running: int
+    idle: int
+
+
 class RobotStatusListResponse(BaseModel):
     robots: list[RobotStatusResponse]
+    pagination: RobotStatusPagination
+    summary: RobotFleetSummary

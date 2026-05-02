@@ -29,7 +29,7 @@ From there, the project can grow into more operational workflows: sending comman
 - Detects online/offline state from heartbeat freshness
 - Stores latest fleet state in PostgreSQL
 - Records lightweight robot events for audit/history
-- Provides a dashboard with search, pagination, and status filters
+- Provides a dashboard with backend-side search, pagination, page-size controls, and status filters
 - Runs locally with Docker Compose
 - Applies database migrations automatically on backend startup
 

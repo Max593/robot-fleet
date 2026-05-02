@@ -1,6 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, Battery, ChevronLeft, ChevronRight, CirclePause, CirclePlay, RefreshCw, Search, Wifi, WifiOff } from "lucide-react";
+import {
+  Activity,
+  Battery,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  CirclePause,
+  CirclePlay,
+  RefreshCw,
+  Search,
+  Wifi,
+  WifiOff
+} from "lucide-react";
 
 type Robot = {
   robot_id: string;
@@ -13,38 +26,86 @@ type Robot = {
 
 type RobotsResponse = {
   robots: Robot[];
+  pagination: Pagination;
+  summary: FleetSummary;
 };
 
 type StatusFilter = "all" | "online" | "offline" | "running" | "idle";
 
+type Pagination = {
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
+
+type FleetSummary = {
+  total: number;
+  online: number;
+  offline: number;
+  running: number;
+  idle: number;
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-const pageSize = 25;
+const pageSizeOptions = [10, 25, 50, 100];
+const initialPagination: Pagination = {
+  total: 0,
+  page: 1,
+  page_size: 25,
+  total_pages: 1
+};
+const initialSummary: FleetSummary = {
+  total: 0,
+  online: 0,
+  offline: 0,
+  running: 0,
+  idle: 0
+};
 
 function App() {
   const [robots, setRobots] = useState<Robot[]>([]);
+  const [summary, setSummary] = useState<FleetSummary>(initialSummary);
+  const [pagination, setPagination] = useState<Pagination>(initialPagination);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const loadRobots = useCallback(async () => {
     try {
       setError(null);
-      const response = await fetch(`${apiBaseUrl}/robots/status`);
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        page_size: String(pageSize),
+        filter: statusFilter
+      });
+      const normalizedSearch = searchTerm.trim();
+      if (normalizedSearch.length > 0) {
+        params.set("search", normalizedSearch);
+      }
+
+      const response = await fetch(`${apiBaseUrl}/robots/status?${params}`);
       if (!response.ok) {
         throw new Error(`Backend returned ${response.status}`);
       }
       const data = (await response.json()) as RobotsResponse;
       setRobots(data.robots);
+      setSummary(data.summary);
+      setPagination(data.pagination);
+      if (data.pagination.page !== currentPage) {
+        setCurrentPage(data.pagination.page);
+      }
       setLastUpdatedAt(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load robot status");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentPage, pageSize, searchTerm, statusFilter]);
 
   useEffect(() => {
     void loadRobots();
@@ -52,41 +113,23 @@ function App() {
     return () => window.clearInterval(intervalId);
   }, [loadRobots]);
 
-  const summary = useMemo(() => {
-    const online = robots.filter((robot) => robot.is_online).length;
-    const running = robots.filter((robot) => robot.is_online && robot.status === "running").length;
-    const idle = robots.filter((robot) => robot.is_online && robot.status === "idle").length;
-    return {
-      total: robots.length,
-      online,
-      offline: robots.length - online,
-      running,
-      idle
-    };
-  }, [robots]);
+  const firstVisibleRow = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.page_size + 1;
+  const lastVisibleRow = Math.min(pagination.page * pagination.page_size, pagination.total);
 
-  const filteredRobots = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-    return robots.filter((robot) => {
-      const matchesSearch = normalizedSearch.length === 0 || robot.robot_id.toLowerCase().includes(normalizedSearch);
-      return matchesSearch && matchesStatusFilter(robot, statusFilter);
-    });
-  }, [robots, searchTerm, statusFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredRobots.length / pageSize));
-  const pageStart = (currentPage - 1) * pageSize;
-  const pageEnd = pageStart + pageSize;
-  const visibleRobots = filteredRobots.slice(pageStart, pageEnd);
-  const firstVisibleRow = filteredRobots.length === 0 ? 0 : pageStart + 1;
-  const lastVisibleRow = Math.min(pageEnd, filteredRobots.length);
-
-  useEffect(() => {
+  const updateSearchTerm = (value: string) => {
+    setSearchTerm(value);
     setCurrentPage(1);
-  }, [searchTerm, statusFilter]);
+  };
 
-  useEffect(() => {
-    setCurrentPage((page) => Math.min(page, totalPages));
-  }, [totalPages]);
+  const updateStatusFilter = (nextFilter: StatusFilter) => {
+    setStatusFilter((currentFilter) => (currentFilter === nextFilter && nextFilter !== "all" ? "all" : nextFilter));
+    setCurrentPage(1);
+  };
+
+  const updatePageSize = (value: string) => {
+    setPageSize(Number(value));
+    setCurrentPage(1);
+  };
 
   return (
     <main className="shell">
@@ -110,7 +153,7 @@ function App() {
           tone="blue"
           icon={<Activity size={18} />}
           isActive={statusFilter === "all"}
-          onClick={() => setStatusFilter("all")}
+          onClick={() => updateStatusFilter("all")}
         />
         <Metric
           label="Online"
@@ -118,7 +161,7 @@ function App() {
           tone="green"
           icon={<Wifi size={18} />}
           isActive={statusFilter === "online"}
-          onClick={() => setStatusFilter((filter) => (filter === "online" ? "all" : "online"))}
+          onClick={() => updateStatusFilter("online")}
         />
         <Metric
           label="Offline"
@@ -126,7 +169,7 @@ function App() {
           tone="red"
           icon={<WifiOff size={18} />}
           isActive={statusFilter === "offline"}
-          onClick={() => setStatusFilter((filter) => (filter === "offline" ? "all" : "offline"))}
+          onClick={() => updateStatusFilter("offline")}
         />
         <Metric
           label="Running"
@@ -134,7 +177,7 @@ function App() {
           tone="amber"
           icon={<CirclePlay size={18} />}
           isActive={statusFilter === "running"}
-          onClick={() => setStatusFilter((filter) => (filter === "running" ? "all" : "running"))}
+          onClick={() => updateStatusFilter("running")}
         />
         <Metric
           label="Idle"
@@ -142,7 +185,7 @@ function App() {
           tone="slate"
           icon={<CirclePause size={18} />}
           isActive={statusFilter === "idle"}
-          onClick={() => setStatusFilter((filter) => (filter === "idle" ? "all" : "idle"))}
+          onClick={() => updateStatusFilter("idle")}
         />
       </section>
 
@@ -151,7 +194,7 @@ function App() {
       <section className="tableSection" aria-label="Robot status table">
         <div className="sectionHeader">
           <h2>Robots</h2>
-          <span>{isLoading ? "Loading" : `${filteredRobots.length} shown of ${robots.length} tracked`}</span>
+          <span>{isLoading ? "Loading" : `${pagination.total} matching of ${summary.total} tracked`}</span>
         </div>
 
         <div className="tableTools">
@@ -160,10 +203,20 @@ function App() {
             <span className="srOnly">Search robots</span>
             <input
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onChange={(event) => updateSearchTerm(event.target.value)}
               placeholder="Search robot ID"
               type="search"
             />
+          </label>
+          <label className="pageSizeControl">
+            <span>Rows per page</span>
+            <select value={pageSize} onChange={(event) => updatePageSize(event.target.value)}>
+              {pageSizeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 
@@ -179,7 +232,7 @@ function App() {
               </tr>
             </thead>
             <tbody>
-              {visibleRobots.map((robot) => (
+              {robots.map((robot) => (
                 <tr key={robot.robot_id}>
                   <td className="robotId">{robot.robot_id}</td>
                   <td>
@@ -196,35 +249,57 @@ function App() {
               ))}
             </tbody>
           </table>
-          {!isLoading && robots.length === 0 ? <div className="emptyState">No robots have checked in yet.</div> : null}
-          {!isLoading && robots.length > 0 && filteredRobots.length === 0 ? <div className="emptyState">No robots match the current filters.</div> : null}
+          {!isLoading && summary.total === 0 ? <div className="emptyState">No robots have checked in yet.</div> : null}
+          {!isLoading && summary.total > 0 && pagination.total === 0 ? <div className="emptyState">No robots match the current filters.</div> : null}
         </div>
 
         <div className="paginationBar" aria-label="Robot table pagination">
           <span>
-            Rows {firstVisibleRow}-{lastVisibleRow} of {filteredRobots.length}
+            Rows {firstVisibleRow}-{lastVisibleRow} of {pagination.total}
           </span>
           <div className="paginationControls">
             <button
               className="pageButton"
+              onClick={() => setCurrentPage(1)}
+              disabled={pagination.page <= 1}
+              title="First page"
+              aria-label="First page"
+              type="button"
+            >
+              <ChevronsLeft size={17} aria-hidden="true" />
+            </button>
+            <button
+              className="pageButton"
               onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-              disabled={currentPage <= 1}
+              disabled={pagination.page <= 1}
               title="Previous page"
               aria-label="Previous page"
+              type="button"
             >
               <ChevronLeft size={17} aria-hidden="true" />
             </button>
             <span className="pageCount">
-              Page {currentPage} of {totalPages}
+              Page {pagination.page} of {pagination.total_pages}
             </span>
             <button
               className="pageButton"
-              onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((page) => Math.min(pagination.total_pages, page + 1))}
+              disabled={pagination.page >= pagination.total_pages}
               title="Next page"
               aria-label="Next page"
+              type="button"
             >
               <ChevronRight size={17} aria-hidden="true" />
+            </button>
+            <button
+              className="pageButton"
+              onClick={() => setCurrentPage(pagination.total_pages)}
+              disabled={pagination.page >= pagination.total_pages}
+              title="Last page"
+              aria-label="Last page"
+              type="button"
+            >
+              <ChevronsRight size={17} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -259,22 +334,6 @@ function Metric({ label, value, tone, icon, isActive, onClick }: MetricProps) {
       </div>
     </button>
   );
-}
-
-function matchesStatusFilter(robot: Robot, statusFilter: StatusFilter) {
-  if (statusFilter === "all") {
-    return true;
-  }
-  if (statusFilter === "online") {
-    return robot.is_online;
-  }
-  if (statusFilter === "offline") {
-    return !robot.is_online;
-  }
-  if (statusFilter === "running") {
-    return robot.is_online && robot.status === "running";
-  }
-  return robot.is_online && robot.status === "idle";
 }
 
 function StatusPill({ online }: { online: boolean }) {

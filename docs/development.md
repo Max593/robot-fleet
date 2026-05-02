@@ -14,6 +14,7 @@ DOWNTIME_PROBABILITY=0.03
 MIN_DOWNTIME_SECONDS=60
 MAX_DOWNTIME_SECONDS=120
 OFFLINE_AFTER_SECONDS=45
+LOG_LEVEL=INFO
 COMMAND_RETENTION_DAYS=30
 COMMAND_EXPIRATION_SECONDS=120
 EVENT_RETENTION_DAYS=7
@@ -183,6 +184,19 @@ cd backend
 alembic revision --autogenerate -m "describe change"
 alembic upgrade head
 ```
+
+## Linting And Formatting
+
+## Logging
+
+Backend and simulator logs use Python's standard `logging` module and write to stdout/stderr, so they are visible through Docker Compose:
+
+```bash
+docker compose -f .infrastructure/docker-compose.yml logs -f backend
+docker compose -f .infrastructure/docker-compose.yml logs -f simulator
+```
+
+`LOG_LEVEL` defaults to `INFO`. Use `DEBUG` when you need lower-level details such as empty command polls, recharge ticks, or cleanup cutoffs. Routine heartbeat and status-update requests are intentionally not logged per robot because the simulator runs thousands of robots.
 
 ## Linting And Formatting
 

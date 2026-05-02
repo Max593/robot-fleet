@@ -8,24 +8,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.robots import router as robots_router
 from app.config import get_settings
 from app.db.session import SessionLocal
+from app.logging_config import configure_logging
 from app.services.robots import cleanup_old_robot_commands, cleanup_old_robot_events
 
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+configure_logging(settings.log_level)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    logger.info(
+        "backend starting, log_level=%s, offline_after_seconds=%s, command_expiration_seconds=%s",
+        settings.log_level.upper(),
+        settings.offline_after_seconds,
+        settings.command_expiration_seconds,
+    )
     with SessionLocal() as db:
         deleted_commands = cleanup_old_robot_commands(db, settings.command_retention_days)
         deleted_events = cleanup_old_robot_events(db, settings.event_retention_days)
-        if deleted_commands > 0:
-            logger.info("deleted %s old robot commands", deleted_commands)
-        if deleted_events > 0:
-            logger.info("deleted %s old robot events", deleted_events)
+        logger.info(
+            "retention cleanup completed deleted_commands=%s deleted_events=%s",
+            deleted_commands,
+            deleted_events,
+        )
 
     yield
+
+    logger.info("backend shutting down")
 
 
 app = FastAPI(title="Robot Fleet Operations API", version="0.1.0", lifespan=lifespan)

@@ -175,13 +175,31 @@ async def _poll_and_apply_command(
 ) -> None:
     command = await _get_next_command(client, request_gate, state.robot_id)
     if command is None:
+        logger.debug("no command available robot_id=%s", state.robot_id)
         return
 
+    command_id = int(command["id"])
+    command_type = str(command["command_type"])
+    logger.info("command claimed robot_id=%s command_id=%s command_type=%s", state.robot_id, command_id, command_type)
     try:
         should_complete, result = _apply_command(command, state, control_state, settings)
+        logger.info(
+            "command applied robot_id=%s command_id=%s command_type=%s completes_immediately=%s",
+            state.robot_id,
+            command_id,
+            command_type,
+            should_complete,
+        )
         if should_complete:
-            await _complete_command(client, request_gate, state.robot_id, int(command["id"]), result)
+            await _complete_command(client, request_gate, state.robot_id, command_id, result)
     except (KeyError, TypeError, ValueError) as exc:
+        logger.info(
+            "command failed robot_id=%s command_id=%s command_type=%s error=%s",
+            state.robot_id,
+            command_id,
+            command_type,
+            exc,
+        )
         await _post(
             client,
             request_gate,
@@ -231,6 +249,12 @@ def _apply_command(
             return True, {"battery_level": state.battery_level, "already_full": True}
 
         control_state.start_recharge(int(command["id"]))
+        logger.info(
+            "recharge started robot_id=%s command_id=%s battery_level=%s",
+            state.robot_id,
+            command["id"],
+            state.battery_level,
+        )
         return False, {"recharge_started": True}
 
     raise ValueError(f"unsupported command type {command_type}")
@@ -245,6 +269,12 @@ async def _run_recharge_tick(
 ) -> None:
     state.status = "idle"
     state.battery_level = min(100, state.battery_level + settings.recharge_step_percent)
+    logger.debug(
+        "recharge tick robot_id=%s command_id=%s battery_level=%s",
+        state.robot_id,
+        control_state.recharge_command_id,
+        state.battery_level,
+    )
     await _post(client, request_gate, f"/robot/{state.robot_id}/ping", json=None)
     await _post(
         client,
@@ -256,6 +286,7 @@ async def _run_recharge_tick(
     if state.battery_level >= 100:
         command_id = control_state.finish_recharge()
         if command_id is not None:
+            logger.info("recharge completed robot_id=%s command_id=%s", state.robot_id, command_id)
             await _complete_command(
                 client,
                 request_gate,
@@ -281,6 +312,7 @@ async def _complete_command(
         f"/robot/{robot_id}/commands/{command_id}/complete",
         json={"success": True, "result": result},
     )
+    logger.info("command completion reported robot_id=%s command_id=%s", robot_id, command_id)
 
 
 async def _get_next_command(

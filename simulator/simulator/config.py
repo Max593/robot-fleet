@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     backend_base_url: str = "http://localhost:8000"
+    log_level: str = "INFO"
     robot_count: int = Field(default=5000, ge=1)
     heartbeat_interval_seconds: float = Field(default=60.0, gt=0)
     max_concurrent_requests: int = Field(default=100, ge=1)

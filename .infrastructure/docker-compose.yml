@@ -23,6 +23,7 @@ services:
       dockerfile: .infrastructure/backend.Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://robot:robot@postgres:5432/robot_fleet
+      LOG_LEVEL: INFO
       OFFLINE_AFTER_SECONDS: "45"
       COMMAND_RETENTION_DAYS: "30"
       COMMAND_EXPIRATION_SECONDS: "120"
@@ -45,6 +46,7 @@ services:
       dockerfile: .infrastructure/simulator.Dockerfile
     environment:
       BACKEND_BASE_URL: http://backend:8000
+      LOG_LEVEL: INFO
       ROBOT_COUNT: "5000"
       HEARTBEAT_INTERVAL_SECONDS: "60"
       MAX_CONCURRENT_REQUESTS: "100"

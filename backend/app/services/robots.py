@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from math import ceil
 from typing import cast
@@ -22,6 +23,8 @@ from app.schemas.robot import (
     RobotUpdateRequest,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def create_robot_command(
     db: Session,
@@ -32,6 +35,11 @@ def create_robot_command(
     now = datetime.now(UTC)
     repository = RobotRepository(db)
     if repository.get_robot(robot_id) is None:
+        logger.info(
+            "command rejected robot_id=%s command_type=%s reason=robot_not_found",
+            robot_id,
+            request.command_type.value,
+        )
         return None
 
     command = repository.create_command(
@@ -41,6 +49,13 @@ def create_robot_command(
         expires_at=now + timedelta(seconds=expiration_seconds),
     )
     db.commit()
+    logger.info(
+        "command created command_id=%s robot_id=%s command_type=%s expires_at=%s",
+        command.id,
+        command.robot_id,
+        command.command_type,
+        command.expires_at,
+    )
     return _to_command_response(command)
 
 
@@ -49,6 +64,15 @@ def claim_next_robot_command(db: Session, robot_id: str) -> RobotCommandNextResp
     repository = RobotRepository(db)
     command = repository.claim_next_command(robot_id, claimed_at=now)
     db.commit()
+    if command is not None:
+        logger.info(
+            "command claimed command_id=%s robot_id=%s command_type=%s",
+            command.id,
+            command.robot_id,
+            command.command_type,
+        )
+    else:
+        logger.debug("no pending command robot_id=%s", robot_id)
 
     return RobotCommandNextResponse(command=_to_command_response(command) if command else None)
 
@@ -72,6 +96,7 @@ def complete_robot_command(
     )
     if command is None:
         db.rollback()
+        logger.info("command completion rejected command_id=%s robot_id=%s reason=not_found", command_id, robot_id)
         return None
 
     repository.add_event(
@@ -85,6 +110,12 @@ def complete_robot_command(
         },
     )
     db.commit()
+    logger.info(
+        "command completed command_id=%s robot_id=%s status=%s",
+        command.id,
+        command.robot_id,
+        command.status,
+    )
     return _to_command_response(command)
 
 
@@ -97,6 +128,7 @@ def list_robot_commands(db: Session, robot_id: str, limit: int) -> list[RobotCom
 
 def cleanup_old_robot_commands(db: Session, retention_days: int) -> int:
     cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    logger.debug("cleaning old robot commands cutoff=%s retention_days=%s", cutoff, retention_days)
     deleted_count = RobotRepository(db).delete_terminal_commands_older_than(cutoff)
     db.commit()
     return deleted_count
@@ -104,6 +136,7 @@ def cleanup_old_robot_commands(db: Session, retention_days: int) -> int:
 
 def cleanup_old_robot_events(db: Session, retention_days: int) -> int:
     cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    logger.debug("cleaning old robot events cutoff=%s retention_days=%s", cutoff, retention_days)
     deleted_count = RobotRepository(db).delete_events_older_than(cutoff)
     db.commit()
     return deleted_count

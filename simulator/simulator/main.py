@@ -5,19 +5,21 @@ import time
 import httpx
 
 from simulator.config import Settings
+from simulator.logging_config import configure_logging
 from simulator.robot import simulate_robot
 
 
 async def run() -> None:
     settings = Settings()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    configure_logging(settings.log_level)
     logging.info(
-        "starting simulator with %s robots, heartbeat interval %.1fs, max concurrency %s",
+        "starting simulator robots=%s heartbeat_interval=%.1fs max_concurrency=%s "
+        "log_level=%s command_poll_interval=%.1fs",
         settings.robot_count,
         settings.heartbeat_interval_seconds,
         settings.max_concurrent_requests,
+        settings.log_level.upper(),
+        settings.command_poll_interval_seconds,
     )
 
     request_gate = asyncio.Semaphore(settings.max_concurrent_requests)

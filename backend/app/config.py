@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://robot:robot@localhost:5432/robot_fleet"
+    log_level: str = "INFO"
     offline_after_seconds: int = 45
     command_retention_days: int = 30
     command_expiration_seconds: int = 120

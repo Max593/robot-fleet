@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://robot:robot@localhost:5432/robot_fleet"
     offline_after_seconds: int = 45
     command_retention_days: int = 30
+    command_expiration_seconds: int = 120
     event_retention_days: int = 7
     cors_origins: str = "http://localhost:5173,http://localhost:8080"
 

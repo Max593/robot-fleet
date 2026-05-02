@@ -27,7 +27,9 @@ def create_robot_command(
     db: Session,
     robot_id: str,
     request: RobotCommandCreateRequest,
+    expiration_seconds: int,
 ) -> RobotCommandResponse | None:
+    now = datetime.now(UTC)
     repository = RobotRepository(db)
     if repository.get_robot(robot_id) is None:
         return None
@@ -36,6 +38,7 @@ def create_robot_command(
         robot_id=robot_id,
         command_type=request.command_type,
         payload=request.payload,
+        expires_at=now + timedelta(seconds=expiration_seconds),
     )
     db.commit()
     return _to_command_response(command)
@@ -86,7 +89,9 @@ def complete_robot_command(
 
 
 def list_robot_commands(db: Session, robot_id: str, limit: int) -> list[RobotCommandResponse]:
-    commands = RobotRepository(db).list_commands(robot_id, limit=limit)
+    repository = RobotRepository(db)
+    commands = repository.list_commands(robot_id, limit=limit, now=datetime.now(UTC))
+    db.commit()
     return [_to_command_response(command) for command in commands]
 
 

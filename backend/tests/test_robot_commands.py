@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.base import Base
 from app.models.robot import Robot, RobotCommand, RobotEvent
 from app.repositories.robots import RobotRepository
-from app.schemas.robot import RobotCommandCreateRequest, RobotCommandType
+from app.schemas.robot import RobotCommandCreateRequest, RobotCommandStatus, RobotCommandType
 
 
 @pytest.fixture
@@ -33,6 +33,12 @@ def test_pause_for_accepts_bounded_duration() -> None:
     )
 
     assert request.payload == {"duration_seconds": 60}
+
+
+def test_recharge_to_full_does_not_require_payload() -> None:
+    request = RobotCommandCreateRequest(command_type=RobotCommandType.RECHARGE_TO_FULL)
+
+    assert request.payload == {}
 
 
 def test_cleanup_deletes_only_old_terminal_commands(db: Session) -> None:
@@ -117,3 +123,66 @@ def test_cleanup_deletes_old_events(db: Session) -> None:
     remaining_events = db.execute(select(RobotEvent.id)).scalars().all()
     assert deleted_count == 1
     assert remaining_events == [2]
+
+
+def test_claim_next_command_expires_overdue_pending_commands(db: Session) -> None:
+    now = datetime(2026, 5, 2, tzinfo=UTC)
+    repository = RobotRepository(db)
+
+    db.add(Robot(robot_id="robot-000001"))
+    db.flush()
+    db.add_all(
+        [
+            RobotCommand(
+                id=1,
+                robot_id="robot-000001",
+                command_type="run_diagnostic",
+                status="pending",
+                created_at=now - timedelta(minutes=5),
+                expires_at=now - timedelta(seconds=1),
+            ),
+            RobotCommand(
+                id=2,
+                robot_id="robot-000001",
+                command_type="run_diagnostic",
+                status="pending",
+                created_at=now,
+                expires_at=now + timedelta(minutes=2),
+            ),
+        ]
+    )
+    db.commit()
+
+    command = repository.claim_next_command("robot-000001", claimed_at=now)
+    db.commit()
+
+    statuses = db.execute(select(RobotCommand.status).order_by(RobotCommand.id)).scalars().all()
+    assert command is not None
+    assert command.id == 2
+    assert statuses == [RobotCommandStatus.EXPIRED.value, RobotCommandStatus.CLAIMED.value]
+
+
+def test_list_commands_expires_overdue_pending_commands(db: Session) -> None:
+    now = datetime(2026, 5, 2, tzinfo=UTC)
+    repository = RobotRepository(db)
+
+    db.add(Robot(robot_id="robot-000001"))
+    db.flush()
+    db.add(
+        RobotCommand(
+            id=1,
+            robot_id="robot-000001",
+            command_type="run_diagnostic",
+            status="pending",
+            created_at=now - timedelta(minutes=5),
+            expires_at=now - timedelta(seconds=1),
+        )
+    )
+    db.commit()
+
+    commands = repository.list_commands("robot-000001", limit=10, now=now)
+    db.commit()
+
+    assert len(commands) == 1
+    assert commands[0].status == RobotCommandStatus.EXPIRED.value
+    assert commands[0].completed_at == now.replace(tzinfo=None)

@@ -31,7 +31,7 @@ From there, the project can grow into more operational workflows: sending comman
 - Stores latest fleet state in PostgreSQL
 - Records significant robot events for audit/history without logging every heartbeat
 - Provides a dashboard with backend-side search, pagination, page-size controls, and status filters
-- Queues one-robot commands and tracks command completion history
+- Queues one-robot commands, including simulated recharge jobs, and tracks command completion history
 - Runs locally with Docker Compose
 - Applies database migrations automatically on backend startup
 

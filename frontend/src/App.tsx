@@ -34,7 +34,13 @@ type RobotsResponse = {
 };
 
 type StatusFilter = "all" | "online" | "offline" | "running" | "idle";
-type CommandType = "run_diagnostic" | "pause_for" | "pause_until_resumed" | "resume" | "return_to_base";
+type CommandType =
+  | "run_diagnostic"
+  | "pause_for"
+  | "pause_until_resumed"
+  | "resume"
+  | "return_to_base"
+  | "recharge_to_full";
 
 type Toast = {
   id: number;
@@ -64,7 +70,8 @@ const commandLabels: Record<CommandType, string> = {
   pause_for: "Pause for",
   pause_until_resumed: "Pause until resumed",
   resume: "Resume",
-  return_to_base: "Return to base"
+  return_to_base: "Return to base",
+  recharge_to_full: "Recharge to full"
 };
 const initialPagination: Pagination = {
   total: 0,

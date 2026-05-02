@@ -49,8 +49,14 @@ def create_command(
     robot_id: str,
     payload: RobotCommandCreateRequest,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> RobotCommandResponse:
-    command = create_robot_command(db, robot_id, payload)
+    command = create_robot_command(
+        db,
+        robot_id,
+        payload,
+        expiration_seconds=settings.command_expiration_seconds,
+    )
     if command is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Robot not found")
     return command

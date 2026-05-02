@@ -37,6 +37,7 @@ class RobotControlState:
     paused_until_resumed: bool = False
     forced_status: str | None = None
     forced_status_until: float | None = None
+    recharge_command_id: int | None = None
 
     def is_paused(self, now: float) -> bool:
         if self.paused_until_resumed:
@@ -63,6 +64,21 @@ class RobotControlState:
         self.paused_until = None
         self.paused_until_resumed = False
 
+    def is_recharging(self) -> bool:
+        return self.recharge_command_id is not None
+
+    def start_recharge(self, command_id: int) -> None:
+        self.recharge_command_id = command_id
+        self.paused_until = None
+        self.paused_until_resumed = False
+        self.forced_status = None
+        self.forced_status_until = None
+
+    def finish_recharge(self) -> int | None:
+        command_id = self.recharge_command_id
+        self.recharge_command_id = None
+        return command_id
+
 
 async def simulate_robot(
     robot_number: int,
@@ -79,9 +95,13 @@ async def simulate_robot(
 
     while True:
         now = time.monotonic()
-        if now >= next_command_poll_at:
+        if now >= next_command_poll_at and not control_state.is_recharging():
             await _poll_and_apply_command(client, request_gate, state, control_state, settings)
             next_command_poll_at = _next_command_poll_at(settings)
+
+        if control_state.is_recharging():
+            await _run_recharge_tick(client, request_gate, state, control_state, settings)
+            continue
 
         if control_state.is_paused(time.monotonic()):
             await asyncio.sleep(min(settings.command_poll_interval_seconds, settings.heartbeat_interval_seconds))
@@ -133,9 +153,11 @@ async def _sleep_with_command_polling(
 
     while time.monotonic() < sleep_until:
         now = time.monotonic()
-        if now >= next_command_poll_at:
+        if now >= next_command_poll_at and not control_state.is_recharging():
             await _poll_and_apply_command(client, request_gate, state, control_state, settings)
             next_command_poll_at = _next_command_poll_at(settings)
+            if control_state.is_recharging():
+                return next_command_poll_at
             if control_state.is_paused(time.monotonic()):
                 return next_command_poll_at
 
@@ -156,13 +178,9 @@ async def _poll_and_apply_command(
         return
 
     try:
-        result = _apply_command(command, control_state, settings)
-        await _post(
-            client,
-            request_gate,
-            f"/robot/{state.robot_id}/commands/{command['id']}/complete",
-            json={"success": True, "result": result},
-        )
+        should_complete, result = _apply_command(command, state, control_state, settings)
+        if should_complete:
+            await _complete_command(client, request_gate, state.robot_id, int(command["id"]), result)
     except (KeyError, TypeError, ValueError) as exc:
         await _post(
             client,
@@ -174,9 +192,10 @@ async def _poll_and_apply_command(
 
 def _apply_command(
     command: dict[str, Any],
+    state: RobotState,
     control_state: RobotControlState,
     settings: Settings,
-) -> dict[str, Any]:
+) -> tuple[bool, dict[str, Any]]:
     command_type = command["command_type"]
     payload = command.get("payload") or {}
     now = time.monotonic()
@@ -185,28 +204,83 @@ def _apply_command(
         duration_seconds = float(payload["duration_seconds"])
         control_state.paused_until = now + duration_seconds
         control_state.paused_until_resumed = False
-        return {"paused_for_seconds": duration_seconds}
+        return True, {"paused_for_seconds": duration_seconds}
 
     if command_type == "pause_until_resumed":
         control_state.paused_until = None
         control_state.paused_until_resumed = True
-        return {"paused_until_resumed": True}
+        return True, {"paused_until_resumed": True}
 
     if command_type == "resume":
         control_state.resume()
-        return {"resumed": True}
+        return True, {"resumed": True}
 
     if command_type == "run_diagnostic":
         control_state.forced_status = "running"
         control_state.forced_status_until = now + settings.diagnostic_duration_seconds
-        return {"forced_status": "running", "duration_seconds": settings.diagnostic_duration_seconds}
+        return True, {"forced_status": "running", "duration_seconds": settings.diagnostic_duration_seconds}
 
     if command_type == "return_to_base":
         control_state.forced_status = "running"
         control_state.forced_status_until = now + settings.return_to_base_duration_seconds
-        return {"forced_status": "running", "duration_seconds": settings.return_to_base_duration_seconds}
+        return True, {"forced_status": "running", "duration_seconds": settings.return_to_base_duration_seconds}
+
+    if command_type == "recharge_to_full":
+        state.status = "idle"
+        if state.battery_level >= 100:
+            return True, {"battery_level": state.battery_level, "already_full": True}
+
+        control_state.start_recharge(int(command["id"]))
+        return False, {"recharge_started": True}
 
     raise ValueError(f"unsupported command type {command_type}")
+
+
+async def _run_recharge_tick(
+    client: httpx.AsyncClient,
+    request_gate: asyncio.Semaphore,
+    state: RobotState,
+    control_state: RobotControlState,
+    settings: Settings,
+) -> None:
+    state.status = "idle"
+    state.battery_level = min(100, state.battery_level + settings.recharge_step_percent)
+    await _post(client, request_gate, f"/robot/{state.robot_id}/ping", json=None)
+    await _post(
+        client,
+        request_gate,
+        f"/robot/{state.robot_id}/update",
+        json={"status": state.status, "battery_level": state.battery_level},
+    )
+
+    if state.battery_level >= 100:
+        command_id = control_state.finish_recharge()
+        if command_id is not None:
+            await _complete_command(
+                client,
+                request_gate,
+                state.robot_id,
+                command_id,
+                {"battery_level": state.battery_level, "recharged_to_full": True},
+            )
+        return
+
+    await asyncio.sleep(settings.recharge_tick_seconds)
+
+
+async def _complete_command(
+    client: httpx.AsyncClient,
+    request_gate: asyncio.Semaphore,
+    robot_id: str,
+    command_id: int,
+    result: dict[str, Any],
+) -> None:
+    await _post(
+        client,
+        request_gate,
+        f"/robot/{robot_id}/commands/{command_id}/complete",
+        json={"success": True, "result": result},
+    )
 
 
 async def _get_next_command(

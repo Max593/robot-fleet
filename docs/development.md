@@ -15,8 +15,11 @@ MIN_DOWNTIME_SECONDS=60
 MAX_DOWNTIME_SECONDS=120
 OFFLINE_AFTER_SECONDS=45
 COMMAND_RETENTION_DAYS=30
+COMMAND_EXPIRATION_SECONDS=120
 EVENT_RETENTION_DAYS=7
 COMMAND_POLL_INTERVAL_SECONDS=30
+RECHARGE_TICK_SECONDS=5
+RECHARGE_STEP_PERCENT=10
 ```
 
 Each robot periodically sends a heartbeat and a state update. Status and battery level change locally inside the simulator. Downtime is simulated by pausing a robot loop so it stops sending updates for a short period.
@@ -105,10 +108,14 @@ curl -X POST http://localhost:8000/robots/robot-000001/commands \
 Supported command types are:
 
 ```text
-run_diagnostic / pause_for / pause_until_resumed / resume / return_to_base
+run_diagnostic / pause_for / pause_until_resumed / resume / return_to_base / recharge_to_full
 ```
 
-The simulator claims pending commands through `GET /robot/{robot_id}/commands/next` and reports the outcome through `POST /robot/{robot_id}/commands/{command_id}/complete`. The current implementation keeps command override state in simulator memory. Command history is persisted in PostgreSQL, but active runtime overrides reset when the simulator container restarts.
+The simulator claims pending commands through `GET /robot/{robot_id}/commands/next` and reports the outcome through `POST /robot/{robot_id}/commands/{command_id}/complete`. `COMMAND_EXPIRATION_SECONDS` controls how long a pending command may wait before being claimed. If the robot does not claim it in time, the backend marks it as `expired`.
+
+`recharge_to_full` is a long-running simulator override. While it is active, the robot stays online, reports `idle`, skips random downtime, increases battery by `RECHARGE_STEP_PERCENT` every `RECHARGE_TICK_SECONDS`, then completes the command when battery reaches 100.
+
+The current implementation keeps command override state in simulator memory. Command history is persisted in PostgreSQL, but active runtime overrides reset when the simulator container restarts.
 
 ## Database And Migrations
 

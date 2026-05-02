@@ -21,6 +21,7 @@ class RobotCommandType(str, Enum):
     PAUSE_UNTIL_RESUMED = "pause_until_resumed"
     RESUME = "resume"
     RETURN_TO_BASE = "return_to_base"
+    RECHARGE_TO_FULL = "recharge_to_full"
 
 
 class RobotCommandStatus(str, Enum):

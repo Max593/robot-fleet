@@ -66,7 +66,9 @@ class RobotCommand(Base):
     __tablename__ = "robot_commands"
     __table_args__ = (
         CheckConstraint(
-            "command_type IN ('run_diagnostic', 'pause_for', 'pause_until_resumed', 'resume', 'return_to_base')",
+            "command_type IN ("
+            "'run_diagnostic', 'pause_for', 'pause_until_resumed', 'resume', 'return_to_base', 'recharge_to_full'"
+            ")",
             name="ck_robot_commands_command_type",
         ),
         CheckConstraint(

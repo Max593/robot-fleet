@@ -16,5 +16,7 @@ class Settings(BaseSettings):
     command_poll_interval_seconds: float = Field(default=30.0, gt=0)
     diagnostic_duration_seconds: float = Field(default=20.0, gt=0)
     return_to_base_duration_seconds: float = Field(default=45.0, gt=0)
+    recharge_tick_seconds: float = Field(default=5.0, gt=0)
+    recharge_step_percent: int = Field(default=10, ge=1, le=100)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

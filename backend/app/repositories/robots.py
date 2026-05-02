@@ -72,14 +72,21 @@ class RobotRepository:
         robot_id: str,
         command_type: RobotCommandType,
         payload: dict[str, Any],
+        expires_at: datetime,
     ) -> RobotCommand:
-        command = RobotCommand(robot_id=robot_id, command_type=command_type.value, payload=payload)
+        command = RobotCommand(
+            robot_id=robot_id,
+            command_type=command_type.value,
+            payload=payload,
+            expires_at=expires_at,
+        )
         self.db.add(command)
         self.db.flush()
         self.db.refresh(command)
         return command
 
-    def list_commands(self, robot_id: str, limit: int) -> list[RobotCommand]:
+    def list_commands(self, robot_id: str, limit: int, now: datetime) -> list[RobotCommand]:
+        self.expire_pending_commands(now)
         stmt = (
             select(RobotCommand)
             .where(RobotCommand.robot_id == robot_id)
@@ -89,9 +96,14 @@ class RobotRepository:
         return list(self.db.execute(stmt).scalars().all())
 
     def claim_next_command(self, robot_id: str, claimed_at: datetime) -> RobotCommand | None:
+        self.expire_pending_commands(claimed_at)
         stmt = (
             select(RobotCommand)
-            .where(RobotCommand.robot_id == robot_id, RobotCommand.status == RobotCommandStatus.PENDING.value)
+            .where(
+                RobotCommand.robot_id == robot_id,
+                RobotCommand.status == RobotCommandStatus.PENDING.value,
+                RobotCommand.expires_at > claimed_at,
+            )
             .order_by(RobotCommand.created_at, RobotCommand.id)
             .with_for_update(skip_locked=True)
             .limit(1)
@@ -105,6 +117,26 @@ class RobotRepository:
         self.db.flush()
         self.db.refresh(command)
         return command
+
+    def expire_pending_commands(self, now: datetime) -> int:
+        stmt = (
+            select(RobotCommand)
+            .where(
+                RobotCommand.status == RobotCommandStatus.PENDING.value,
+                RobotCommand.expires_at <= now,
+            )
+            .with_for_update(skip_locked=True)
+        )
+        expired_commands = list(self.db.execute(stmt).scalars().all())
+        for command in expired_commands:
+            command.status = RobotCommandStatus.EXPIRED.value
+            command.completed_at = now
+            command.error_message = "Command expired before the robot claimed it."
+
+        if expired_commands:
+            self.db.flush()
+
+        return len(expired_commands)
 
     def complete_command(
         self,

@@ -18,16 +18,16 @@ class RobotState:
     status: str = "idle"
     battery_level: int = 100
 
-    def tick(self, status_change_probability: float) -> None:
+    def tick(self, status_change_probability: float, low_battery_threshold_percent: int) -> None:
         if random.random() < status_change_probability:
             self.status = "running" if self.status == "idle" else "idle"
 
         if self.status == "running":
-            self.battery_level = max(0, self.battery_level - random.randint(1, 3))
+            self.battery_level = max(0, self.battery_level - random.randint(2, 5))
         else:
-            self.battery_level = min(100, self.battery_level + random.randint(0, 1))
+            self.battery_level = max(0, self.battery_level - random.randint(0, 1))
 
-        if self.battery_level <= 10:
+        if self.battery_level <= low_battery_threshold_percent:
             self.status = "idle"
 
 
@@ -38,6 +38,7 @@ class RobotControlState:
     forced_status: str | None = None
     forced_status_until: float | None = None
     recharge_command_id: int | None = None
+    battery_recovery_requested: bool = False
 
     def is_paused(self, now: float) -> bool:
         if self.paused_until_resumed:
@@ -69,6 +70,7 @@ class RobotControlState:
 
     def start_recharge(self, command_id: int) -> None:
         self.recharge_command_id = command_id
+        self.battery_recovery_requested = True
         self.paused_until = None
         self.paused_until_resumed = False
         self.forced_status = None
@@ -77,6 +79,7 @@ class RobotControlState:
     def finish_recharge(self) -> int | None:
         command_id = self.recharge_command_id
         self.recharge_command_id = None
+        self.battery_recovery_requested = False
         return command_id
 
 
@@ -115,9 +118,15 @@ async def simulate_robot(
         forced_status = control_state.effective_status(time.monotonic())
         if forced_status:
             state.status = forced_status
-            state.tick(status_change_probability=0)
+            state.tick(
+                status_change_probability=0,
+                low_battery_threshold_percent=settings.low_battery_threshold_percent,
+            )
         else:
-            state.tick(settings.status_change_probability)
+            state.tick(
+                status_change_probability=settings.status_change_probability,
+                low_battery_threshold_percent=settings.low_battery_threshold_percent,
+            )
 
         await _post(client, request_gate, f"/robot/{state.robot_id}/ping", json=None)
         await _post(
@@ -126,6 +135,7 @@ async def simulate_robot(
             f"/robot/{state.robot_id}/update",
             json={"status": state.status, "battery_level": state.battery_level},
         )
+        await _queue_battery_recovery_if_needed(client, request_gate, state, control_state, settings)
 
         heartbeat_jitter = random.uniform(-0.15, 0.15) * settings.heartbeat_interval_seconds
         sleep_for = max(1.0, settings.heartbeat_interval_seconds + heartbeat_jitter)
@@ -313,6 +323,41 @@ async def _complete_command(
         json={"success": True, "result": result},
     )
     logger.info("command completion reported robot_id=%s command_id=%s", robot_id, command_id)
+
+
+async def _queue_battery_recovery_if_needed(
+    client: httpx.AsyncClient,
+    request_gate: asyncio.Semaphore,
+    state: RobotState,
+    control_state: RobotControlState,
+    settings: Settings,
+) -> None:
+    if state.battery_level > settings.low_battery_threshold_percent:
+        control_state.battery_recovery_requested = False
+        return
+    if control_state.battery_recovery_requested:
+        return
+
+    try:
+        async with request_gate:
+            response = await client.post(
+                f"/robot/{state.robot_id}/commands/battery-recovery",
+                json={
+                    "battery_level": state.battery_level,
+                    "threshold_percent": settings.low_battery_threshold_percent,
+                },
+            )
+            response.raise_for_status()
+            command = response.json()
+            logger.info(
+                "battery recovery requested robot_id=%s command_id=%s battery_level=%s",
+                state.robot_id,
+                command["id"],
+                state.battery_level,
+            )
+            control_state.battery_recovery_requested = True
+    except httpx.HTTPError as exc:
+        logger.warning("battery recovery request failed for %s: %s", state.robot_id, exc)
 
 
 async def _get_next_command(

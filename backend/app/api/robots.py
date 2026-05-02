@@ -7,6 +7,7 @@ from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.schemas.robot import (
     RobotAckResponse,
+    RobotBatteryRecoveryRequest,
     RobotCommandCompleteRequest,
     RobotCommandCreateRequest,
     RobotCommandListResponse,
@@ -26,6 +27,7 @@ from app.services.robots import (
     list_robot_command_page,
     list_robot_event_page,
     list_robot_status_page,
+    queue_battery_recovery_command,
     record_ping,
     record_update,
 )
@@ -96,6 +98,22 @@ def get_robot_events(
 @router.get("/robot/{robot_id}/commands/next", response_model=RobotCommandNextResponse)
 def get_next_robot_command(robot_id: str, db: Session = Depends(get_db)) -> RobotCommandNextResponse:
     return claim_next_robot_command(db, robot_id)
+
+
+@router.post(
+    "/robot/{robot_id}/commands/battery-recovery",
+    response_model=RobotCommandResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def queue_battery_recovery(
+    robot_id: str,
+    payload: RobotBatteryRecoveryRequest,
+    db: Session = Depends(get_db),
+) -> RobotCommandResponse:
+    command = queue_battery_recovery_command(db, robot_id, payload)
+    if command is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Robot not found")
+    return command
 
 
 @router.post("/robot/{robot_id}/commands/{command_id}/complete", response_model=RobotCommandResponse)

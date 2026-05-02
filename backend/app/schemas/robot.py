@@ -33,6 +33,11 @@ class RobotCommandStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class RobotCommandOrigin(str, Enum):
+    OPERATOR = "operator"
+    SYSTEM = "system"
+
+
 class RobotUpdateRequest(BaseModel):
     status: RobotState | None = None
     battery_level: int | None = Field(default=None, ge=0, le=100)
@@ -63,10 +68,16 @@ class RobotCommandCompleteRequest(BaseModel):
     error_message: str | None = Field(default=None, max_length=1000)
 
 
+class RobotBatteryRecoveryRequest(BaseModel):
+    battery_level: int = Field(ge=0, le=100)
+    threshold_percent: int = Field(ge=1, le=100)
+
+
 class RobotCommandResponse(BaseModel):
     id: int
     robot_id: str
     command_type: RobotCommandType
+    origin: RobotCommandOrigin
     payload: dict[str, Any]
     status: RobotCommandStatus
     result: dict[str, Any] | None

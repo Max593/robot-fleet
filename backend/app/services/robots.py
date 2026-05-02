@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 from app.models.robot import Robot, RobotCommand, RobotEvent
 from app.repositories.robots import RobotRepository, RobotStatusQuery
 from app.schemas.robot import (
+    RobotBatteryRecoveryRequest,
     RobotCommandCompleteRequest,
     RobotCommandCreateRequest,
     RobotCommandListResponse,
     RobotCommandNextResponse,
+    RobotCommandOrigin,
     RobotCommandResponse,
     RobotCommandStatus,
     RobotCommandType,
@@ -49,15 +51,59 @@ def create_robot_command(
         robot_id=robot_id,
         command_type=request.command_type,
         payload=request.payload,
+        origin=RobotCommandOrigin.OPERATOR,
         expires_at=now + timedelta(seconds=expiration_seconds),
     )
     db.commit()
     logger.info(
-        "command created command_id=%s robot_id=%s command_type=%s expires_at=%s",
+        "command created command_id=%s robot_id=%s command_type=%s origin=%s expires_at=%s",
         command.id,
         command.robot_id,
         command.command_type,
+        command.origin,
         command.expires_at,
+    )
+    return _to_command_response(command)
+
+
+def queue_battery_recovery_command(
+    db: Session,
+    robot_id: str,
+    request: RobotBatteryRecoveryRequest,
+) -> RobotCommandResponse | None:
+    repository = RobotRepository(db)
+    if repository.get_robot(robot_id) is None:
+        logger.info("battery recovery rejected robot_id=%s reason=robot_not_found", robot_id)
+        return None
+
+    active_command = repository.get_active_system_recharge_command(robot_id)
+    if active_command is not None:
+        logger.debug(
+            "battery recovery already pending command_id=%s robot_id=%s status=%s",
+            active_command.id,
+            active_command.robot_id,
+            active_command.status,
+        )
+        return _to_command_response(active_command)
+
+    command = repository.create_command(
+        robot_id=robot_id,
+        command_type=RobotCommandType.RECHARGE_TO_FULL,
+        origin=RobotCommandOrigin.SYSTEM,
+        payload={
+            "reason": "low_battery",
+            "battery_level": request.battery_level,
+            "threshold_percent": request.threshold_percent,
+        },
+        expires_at=None,
+    )
+    db.commit()
+    logger.info(
+        "battery recovery queued command_id=%s robot_id=%s battery_level=%s threshold_percent=%s",
+        command.id,
+        command.robot_id,
+        request.battery_level,
+        request.threshold_percent,
     )
     return _to_command_response(command)
 
@@ -69,10 +115,11 @@ def claim_next_robot_command(db: Session, robot_id: str) -> RobotCommandNextResp
     db.commit()
     if command is not None:
         logger.info(
-            "command claimed command_id=%s robot_id=%s command_type=%s",
+            "command claimed command_id=%s robot_id=%s command_type=%s origin=%s",
             command.id,
             command.robot_id,
             command.command_type,
+            command.origin,
         )
     else:
         logger.debug("no pending command robot_id=%s", robot_id)
@@ -107,6 +154,7 @@ def complete_robot_command(
         event_type="command_result",
         payload={
             "command_id": command_id,
+            "origin": command.origin,
             "status": command_status.value,
             "result": request.result,
             "error_message": request.error_message,
@@ -287,6 +335,7 @@ def _to_command_response(command: RobotCommand) -> RobotCommandResponse:
         id=command.id,
         robot_id=command.robot_id,
         command_type=RobotCommandType(command.command_type),
+        origin=RobotCommandOrigin(command.origin),
         payload=command.payload,
         status=RobotCommandStatus(command.status),
         result=command.result,

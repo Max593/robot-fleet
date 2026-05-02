@@ -21,13 +21,16 @@ EVENT_RETENTION_DAYS=7
 COMMAND_POLL_INTERVAL_SECONDS=30
 RECHARGE_TICK_SECONDS=5
 RECHARGE_STEP_PERCENT=10
+LOW_BATTERY_THRESHOLD_PERCENT=15
 ```
 
-Each robot periodically sends a heartbeat and a state update. Status and battery level change locally inside the simulator. Downtime is simulated by pausing a robot loop so it stops sending updates for a short period.
+Each robot periodically sends a heartbeat and a state update. Status and battery level change locally inside the simulator. Running robots drain battery faster, idle robots drain battery slowly, and battery is recovered only through recharge behavior. Downtime is simulated by pausing a robot loop so it stops sending updates for a short period.
 
 `MAX_CONCURRENT_REQUESTS` limits simultaneous simulator HTTP requests even when thousands of robot tasks are running.
 
 Robots also poll for queued commands. Command overrides take priority over autonomous behavior while they are active, then the robot returns to the regular simulator loop.
+
+When a robot battery reaches `LOW_BATTERY_THRESHOLD_PERCENT`, the simulator asks the backend to queue a non-expiring system `recharge_to_full` command if one is not already pending or claimed. This records autonomous recovery as command history instead of silently changing battery state.
 
 Downtime must be longer than the backend `OFFLINE_AFTER_SECONDS` threshold to become visible as offline in the dashboard. The default values use a 45-second offline threshold and 60-120 second downtime windows so short outages are visible but robots return quickly.
 
@@ -45,6 +48,7 @@ GET /robots/{robot_id}
 GET /robots/{robot_id}/events
 POST /robots/{robot_id}/commands
 GET /robots/{robot_id}/commands
+POST /robot/{robot_id}/commands/battery-recovery
 GET /robot/{robot_id}/commands/next
 POST /robot/{robot_id}/commands/{command_id}/complete
 ```
@@ -123,6 +127,14 @@ Supported command types are:
 ```text
 run_diagnostic / pause_for / pause_until_resumed / resume / return_to_base / recharge_to_full
 ```
+
+Commands include an `origin` field:
+
+```text
+operator / system
+```
+
+Dashboard-created commands are stored as `operator`. Low-battery recharge jobs created by the simulator are stored as `system` and use `expires_at = null`, so they do not expire while waiting to be claimed.
 
 The simulator claims pending commands through `GET /robot/{robot_id}/commands/next` and reports the outcome through `POST /robot/{robot_id}/commands/{command_id}/complete`. `COMMAND_EXPIRATION_SECONDS` controls how long a pending command may wait before being claimed. If the robot does not claim it in time, the backend marks it as `expired`.
 
@@ -218,6 +230,17 @@ Install the development tools from the repository root:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
+```
+
+Common commands are also available from the root `Makefile`:
+
+```bash
+make backend-test
+make frontend-typecheck
+make frontend-build
+make lint
+make up
+make down
 ```
 
 Run Ruff manually:

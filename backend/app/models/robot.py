@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 json_document_type = JSONB().with_variant(JSON(), "sqlite")
+big_integer_id_type = BigInteger().with_variant(Integer(), "sqlite")
 
 
 class Robot(Base):
@@ -53,7 +54,7 @@ class RobotEvent(Base):
         Index("ix_robot_events_robot_created_at", "robot_id", "created_at"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(big_integer_id_type, primary_key=True, autoincrement=True)
     robot_id: Mapped[str] = mapped_column(String(64), ForeignKey("robots.robot_id", ondelete="CASCADE"), index=True)
     event_type: Mapped[str] = mapped_column(String(64))
     payload: Mapped[dict] = mapped_column(json_document_type, default=dict, server_default="{}")
@@ -75,14 +76,17 @@ class RobotCommand(Base):
             "status IN ('pending', 'claimed', 'completed', 'failed', 'expired', 'cancelled')",
             name="ck_robot_commands_status",
         ),
+        CheckConstraint("origin IN ('operator', 'system')", name="ck_robot_commands_origin"),
+        Index("ix_robot_commands_robot_origin_type_status", "robot_id", "origin", "command_type", "status"),
         Index("ix_robot_commands_robot_created_at", "robot_id", "created_at"),
         Index("ix_robot_commands_robot_status_created_at", "robot_id", "status", "created_at"),
         Index("ix_robot_commands_status_created_at", "status", "created_at"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(big_integer_id_type, primary_key=True, autoincrement=True)
     robot_id: Mapped[str] = mapped_column(String(64), ForeignKey("robots.robot_id", ondelete="CASCADE"), index=True)
     command_type: Mapped[str] = mapped_column(String(64))
+    origin: Mapped[str] = mapped_column(String(32), default="operator", server_default="operator")
     payload: Mapped[dict] = mapped_column(json_document_type, default=dict, server_default="{}")
     status: Mapped[str] = mapped_column(String(32), default="pending", server_default="pending")
     result: Mapped[dict | None] = mapped_column(json_document_type, nullable=True)

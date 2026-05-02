@@ -8,7 +8,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.base import Base
 from app.models.robot import Robot, RobotCommand, RobotEvent
 from app.repositories.robots import RobotRepository
-from app.schemas.robot import RobotCommandCreateRequest, RobotCommandStatus, RobotCommandType
+from app.schemas.robot import (
+    RobotBatteryRecoveryRequest,
+    RobotCommandCreateRequest,
+    RobotCommandOrigin,
+    RobotCommandStatus,
+    RobotCommandType,
+)
+from app.services.robots import queue_battery_recovery_command
 
 
 @pytest.fixture
@@ -160,6 +167,107 @@ def test_claim_next_command_expires_overdue_pending_commands(db: Session) -> Non
     assert command is not None
     assert command.id == 2
     assert statuses == [RobotCommandStatus.EXPIRED.value, RobotCommandStatus.CLAIMED.value]
+
+
+def test_claim_next_command_accepts_non_expiring_system_command(db: Session) -> None:
+    now = datetime(2026, 5, 2, tzinfo=UTC)
+    repository = RobotRepository(db)
+
+    db.add(Robot(robot_id="robot-000001"))
+    db.flush()
+    db.add(
+        RobotCommand(
+            id=1,
+            robot_id="robot-000001",
+            command_type="recharge_to_full",
+            origin="system",
+            status="pending",
+            created_at=now - timedelta(minutes=5),
+            expires_at=None,
+        )
+    )
+    db.commit()
+
+    command = repository.claim_next_command("robot-000001", claimed_at=now)
+    db.commit()
+
+    assert command is not None
+    assert command.id == 1
+    assert command.status == RobotCommandStatus.CLAIMED.value
+
+
+def test_expire_pending_commands_ignores_non_expiring_system_commands(db: Session) -> None:
+    now = datetime(2026, 5, 2, tzinfo=UTC)
+    repository = RobotRepository(db)
+
+    db.add(Robot(robot_id="robot-000001"))
+    db.flush()
+    db.add(
+        RobotCommand(
+            id=1,
+            robot_id="robot-000001",
+            command_type="recharge_to_full",
+            origin="system",
+            status="pending",
+            created_at=now - timedelta(minutes=5),
+            expires_at=None,
+        )
+    )
+    db.commit()
+
+    expired_count = repository.expire_pending_commands(now)
+    db.commit()
+
+    status = db.execute(select(RobotCommand.status)).scalar_one()
+    assert expired_count == 0
+    assert status == RobotCommandStatus.PENDING.value
+
+
+def test_battery_recovery_command_is_system_origin_and_deduplicated(db: Session) -> None:
+    db.add(Robot(robot_id="robot-000001", battery_level=12))
+    db.commit()
+
+    request = RobotBatteryRecoveryRequest(battery_level=12, threshold_percent=15)
+
+    first_command = queue_battery_recovery_command(db, "robot-000001", request)
+    second_command = queue_battery_recovery_command(db, "robot-000001", request)
+
+    assert first_command is not None
+    assert second_command is not None
+    assert first_command.id == second_command.id
+    assert first_command.origin == RobotCommandOrigin.SYSTEM
+    assert first_command.command_type == RobotCommandType.RECHARGE_TO_FULL
+    assert first_command.expires_at is None
+
+
+def test_battery_recovery_command_ignores_previously_claimed_recovery(db: Session) -> None:
+    now = datetime(2026, 5, 2, tzinfo=UTC)
+    db.add(Robot(robot_id="robot-000001", battery_level=12))
+    db.flush()
+    db.add(
+        RobotCommand(
+            id=1,
+            robot_id="robot-000001",
+            command_type="recharge_to_full",
+            origin="system",
+            status="claimed",
+            created_at=now - timedelta(minutes=5),
+            claimed_at=now - timedelta(minutes=4),
+            expires_at=None,
+        )
+    )
+    db.commit()
+
+    command = queue_battery_recovery_command(
+        db,
+        "robot-000001",
+        RobotBatteryRecoveryRequest(battery_level=12, threshold_percent=15),
+    )
+
+    assert command is not None
+    assert command.id != 1
+    assert command.status == RobotCommandStatus.PENDING
+    assert command.origin == RobotCommandOrigin.SYSTEM
 
 
 def test_list_commands_expires_overdue_pending_commands(db: Session) -> None:

@@ -19,5 +19,6 @@ class Settings(BaseSettings):
     return_to_base_duration_seconds: float = Field(default=45.0, gt=0)
     recharge_tick_seconds: float = Field(default=5.0, gt=0)
     recharge_step_percent: int = Field(default=10, ge=1, le=100)
+    low_battery_threshold_percent: int = Field(default=15, ge=1, le=100)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

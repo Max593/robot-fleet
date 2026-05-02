@@ -662,7 +662,8 @@ tr:last-child td {
 }
 
 .eventType,
-.commandStatus {
+.commandStatus,
+.commandOrigin {
   display: inline-flex;
   align-items: center;
   min-height: 26px;
@@ -681,6 +682,16 @@ tr:last-child td {
 .commandStatus {
   color: #455468;
   background: #eef0f4;
+}
+
+.commandOrigin {
+  color: #1d4f91;
+  background: #e8f1ff;
+}
+
+.commandOrigin-system {
+  color: #7a3f00;
+  background: #fff3d4;
 }
 
 .commandStatus-completed {
@@ -940,6 +951,16 @@ tr:last-child td {
 :root[data-theme="dark"] .commandStatus {
   color: #cbd5e1;
   background: #1e293b;
+}
+
+:root[data-theme="dark"] .commandOrigin {
+  color: #93c5fd;
+  background: #172554;
+}
+
+:root[data-theme="dark"] .commandOrigin-system {
+  color: #fcd34d;
+  background: #78350f;
 }
 
 :root[data-theme="dark"] .commandStatus-completed {

@@ -53,6 +53,7 @@ type RobotCommand = {
   id: number;
   robot_id: string;
   command_type: CommandType;
+  origin: "operator" | "system";
   payload: Record<string, unknown>;
   status: "pending" | "claimed" | "completed" | "failed" | "expired" | "cancelled";
   result: Record<string, unknown> | null;
@@ -432,7 +433,7 @@ function App() {
                 <th>Connectivity</th>
                 <th>Status</th>
                 <th>Battery</th>
-                <th>Last seen</th>
+                <th>Last check-in</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -732,11 +733,11 @@ function RobotDetailPage({
           {robot ? <BatteryCell level={robot.battery_level} /> : <span className="muted">loading</span>}
         </div>
         <div className="summaryItem">
-          <span>Last seen</span>
+          <span>Last check-in</span>
           <strong>{robot ? formatLastSeen(robot.last_seen_seconds_ago) : "loading"}</strong>
         </div>
         <div className="summaryItem">
-          <span>Last timestamp</span>
+          <span>Check-in timestamp</span>
           <strong>{robot?.last_seen_at ? formatDateTime(robot.last_seen_at) : "never"}</strong>
         </div>
       </section>
@@ -830,6 +831,7 @@ function RobotCommandsTable({
             <tr>
               <th>Created</th>
               <th>Command</th>
+              <th>Origin</th>
               <th>Status</th>
               <th>Payload</th>
               <th>Result</th>
@@ -840,6 +842,9 @@ function RobotCommandsTable({
               <tr key={command.id}>
                 <td>{formatDateTime(command.created_at)}</td>
                 <td>{commandLabels[command.command_type]}</td>
+                <td>
+                  <span className={`commandOrigin commandOrigin-${command.origin}`}>{command.origin}</span>
+                </td>
                 <td>
                   <span className={`commandStatus commandStatus-${command.status}`}>{command.status}</span>
                 </td>

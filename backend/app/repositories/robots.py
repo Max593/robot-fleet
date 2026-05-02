@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models.robot import Robot, RobotCommand, RobotEvent
-from app.schemas.robot import RobotCommandStatus, RobotCommandType, RobotStatusFilter
+from app.schemas.robot import RobotCommandOrigin, RobotCommandStatus, RobotCommandType, RobotStatusFilter
 
 
 @dataclass(frozen=True)
@@ -72,11 +72,13 @@ class RobotRepository:
         robot_id: str,
         command_type: RobotCommandType,
         payload: dict[str, Any],
-        expires_at: datetime,
+        origin: RobotCommandOrigin,
+        expires_at: datetime | None,
     ) -> RobotCommand:
         command = RobotCommand(
             robot_id=robot_id,
             command_type=command_type.value,
+            origin=origin.value,
             payload=payload,
             expires_at=expires_at,
         )
@@ -84,6 +86,20 @@ class RobotRepository:
         self.db.flush()
         self.db.refresh(command)
         return command
+
+    def get_active_system_recharge_command(self, robot_id: str) -> RobotCommand | None:
+        stmt = (
+            select(RobotCommand)
+            .where(
+                RobotCommand.robot_id == robot_id,
+                RobotCommand.origin == RobotCommandOrigin.SYSTEM.value,
+                RobotCommand.command_type == RobotCommandType.RECHARGE_TO_FULL.value,
+                RobotCommand.status == RobotCommandStatus.PENDING.value,
+            )
+            .order_by(RobotCommand.created_at, RobotCommand.id)
+            .limit(1)
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
 
     def list_commands(self, robot_id: str, limit: int, now: datetime) -> list[RobotCommand]:
         self.expire_pending_commands(now)
@@ -134,7 +150,7 @@ class RobotRepository:
             .where(
                 RobotCommand.robot_id == robot_id,
                 RobotCommand.status == RobotCommandStatus.PENDING.value,
-                RobotCommand.expires_at > claimed_at,
+                or_(RobotCommand.expires_at.is_(None), RobotCommand.expires_at > claimed_at),
             )
             .order_by(RobotCommand.created_at, RobotCommand.id)
             .with_for_update(skip_locked=True)
@@ -155,6 +171,7 @@ class RobotRepository:
             select(RobotCommand)
             .where(
                 RobotCommand.status == RobotCommandStatus.PENDING.value,
+                RobotCommand.expires_at.is_not(None),
                 RobotCommand.expires_at <= now,
             )
             .with_for_update(skip_locked=True)

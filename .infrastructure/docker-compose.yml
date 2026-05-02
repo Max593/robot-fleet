@@ -58,6 +58,7 @@ services:
       RETURN_TO_BASE_DURATION_SECONDS: "45"
       RECHARGE_TICK_SECONDS: "5"
       RECHARGE_STEP_PERCENT: "10"
+      LOW_BATTERY_THRESHOLD_PERCENT: "15"
     depends_on:
       backend:
         condition: service_healthy

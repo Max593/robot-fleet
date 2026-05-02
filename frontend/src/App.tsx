@@ -9,9 +9,11 @@ import {
   ChevronsRight,
   CirclePause,
   CirclePlay,
+  Moon,
   RefreshCw,
   Search,
   Send,
+  Sun,
   Terminal,
   Wifi,
   WifiOff,
@@ -46,6 +48,8 @@ type Toast = {
   id: number;
   message: string;
 };
+
+type Theme = "light" | "dark";
 
 type Pagination = {
   total: number;
@@ -87,6 +91,11 @@ const initialSummary: FleetSummary = {
   idle: 0
 };
 
+function getInitialTheme(): Theme {
+  const storedTheme = window.localStorage.getItem("robot-fleet-theme");
+  return storedTheme === "dark" ? "dark" : "light";
+}
+
 function App() {
   const [robots, setRobots] = useState<Robot[]>([]);
   const [summary, setSummary] = useState<FleetSummary>(initialSummary);
@@ -104,6 +113,7 @@ function App() {
   const [isSendingCommand, setIsSendingCommand] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [commandError, setCommandError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
 
   const loadRobots = useCallback(async () => {
     try {
@@ -143,11 +153,21 @@ function App() {
     return () => window.clearInterval(intervalId);
   }, [loadRobots]);
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem("robot-fleet-theme", theme);
+  }, [theme]);
+
   const firstVisibleRow = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.page_size + 1;
   const lastVisibleRow = Math.min(pagination.page * pagination.page_size, pagination.total);
 
   const updateSearchTerm = (value: string) => {
     setSearchTerm(value);
+    setCurrentPage(1);
+  };
+
+  const clearSearchTerm = () => {
+    setSearchTerm("");
     setCurrentPage(1);
   };
 
@@ -228,6 +248,14 @@ function App() {
         </div>
         <div className="topbarActions">
           <span className="refreshTime">{lastUpdatedAt ? `Updated ${lastUpdatedAt.toLocaleTimeString()}` : "Waiting for data"}</span>
+          <button
+            className="iconButton"
+            onClick={() => setTheme((currentTheme) => (currentTheme === "dark" ? "light" : "dark"))}
+            title={theme === "dark" ? "Use light mode" : "Use dark mode"}
+            aria-label={theme === "dark" ? "Use light mode" : "Use dark mode"}
+          >
+            {theme === "dark" ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+          </button>
           <button className="iconButton" onClick={() => void loadRobots()} title="Refresh fleet status" aria-label="Refresh fleet status">
             <RefreshCw size={18} aria-hidden="true" />
           </button>
@@ -307,6 +335,11 @@ function App() {
               placeholder="Search robot ID"
               type="search"
             />
+            {searchTerm.length > 0 ? (
+              <button className="searchClearButton" type="button" onClick={clearSearchTerm} aria-label="Clear robot search">
+                <X size={15} aria-hidden="true" />
+              </button>
+            ) : null}
           </label>
           <label className="pageSizeControl">
             <span>Rows per page</span>

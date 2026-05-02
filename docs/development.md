@@ -197,8 +197,6 @@ alembic revision --autogenerate -m "describe change"
 alembic upgrade head
 ```
 
-## Linting And Formatting
-
 ## Logging
 
 Backend and simulator logs use Python's standard `logging` module and write to stdout/stderr, so they are visible through Docker Compose:

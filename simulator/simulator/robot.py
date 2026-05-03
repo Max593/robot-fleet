@@ -128,11 +128,11 @@ async def simulate_robot(
                 low_battery_threshold_percent=settings.low_battery_threshold_percent,
             )
 
-        await _post(client, request_gate, f"/robot/{state.robot_id}/ping", json=None)
+        await _post(client, request_gate, f"/robots/{state.robot_id}/ping", json=None)
         await _post(
             client,
             request_gate,
-            f"/robot/{state.robot_id}/update",
+            f"/robots/{state.robot_id}/update",
             json={"status": state.status, "battery_level": state.battery_level},
         )
         await _queue_battery_recovery_if_needed(client, request_gate, state, control_state, settings)
@@ -213,7 +213,7 @@ async def _poll_and_apply_command(
         await _post(
             client,
             request_gate,
-            f"/robot/{state.robot_id}/commands/{command['id']}/complete",
+            f"/robots/{state.robot_id}/commands/{command['id']}/complete",
             json={"success": False, "error_message": str(exc)},
         )
 
@@ -285,11 +285,11 @@ async def _run_recharge_tick(
         control_state.recharge_command_id,
         state.battery_level,
     )
-    await _post(client, request_gate, f"/robot/{state.robot_id}/ping", json=None)
+    await _post(client, request_gate, f"/robots/{state.robot_id}/ping", json=None)
     await _post(
         client,
         request_gate,
-        f"/robot/{state.robot_id}/update",
+        f"/robots/{state.robot_id}/update",
         json={"status": state.status, "battery_level": state.battery_level},
     )
 
@@ -319,7 +319,7 @@ async def _complete_command(
     await _post(
         client,
         request_gate,
-        f"/robot/{robot_id}/commands/{command_id}/complete",
+        f"/robots/{robot_id}/commands/{command_id}/complete",
         json={"success": True, "result": result},
     )
     logger.info("command completion reported robot_id=%s command_id=%s", robot_id, command_id)
@@ -341,7 +341,7 @@ async def _queue_battery_recovery_if_needed(
     try:
         async with request_gate:
             response = await client.post(
-                f"/robot/{state.robot_id}/commands/battery-recovery",
+                f"/robots/{state.robot_id}/commands/battery-recovery",
                 json={
                     "battery_level": state.battery_level,
                     "threshold_percent": settings.low_battery_threshold_percent,
@@ -367,7 +367,7 @@ async def _get_next_command(
 ) -> dict[str, Any] | None:
     try:
         async with request_gate:
-            response = await client.get(f"/robot/{robot_id}/commands/next")
+            response = await client.get(f"/robots/{robot_id}/commands/next")
             response.raise_for_status()
             data = response.json()
             return data.get("command")

@@ -1,3 +1,3 @@
-from app.models.robot import Robot, RobotEvent
+from app.models.robot import Robot, RobotCommand, RobotEvent
 
-__all__ = ["Robot", "RobotEvent"]
+__all__ = ["Robot", "RobotCommand", "RobotEvent"]

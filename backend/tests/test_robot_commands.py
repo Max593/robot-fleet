@@ -7,15 +7,16 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
 from app.models.robot import Robot, RobotCommand, RobotEvent
-from app.repositories.robots import RobotRepository
-from app.schemas.robot import (
+from app.repositories.commands import RobotCommandRepository
+from app.repositories.events import RobotEventRepository
+from app.schemas.command import (
     RobotBatteryRecoveryRequest,
     RobotCommandCreateRequest,
     RobotCommandOrigin,
     RobotCommandStatus,
     RobotCommandType,
 )
-from app.services.robots import queue_battery_recovery_command
+from app.services.commands import queue_battery_recovery_command
 
 
 @pytest.fixture
@@ -52,7 +53,7 @@ def test_cleanup_deletes_only_old_terminal_commands(db: Session) -> None:
     now = datetime(2026, 5, 2, tzinfo=UTC)
     old = now - timedelta(days=31)
     recent = now - timedelta(days=5)
-    repository = RobotRepository(db)
+    repository = RobotCommandRepository(db)
 
     db.add(Robot(robot_id="robot-000001"))
     db.flush()
@@ -112,7 +113,7 @@ def test_cleanup_deletes_old_events(db: Session) -> None:
     now = datetime(2026, 5, 2, tzinfo=UTC)
     old = now - timedelta(days=8)
     recent = now - timedelta(days=3)
-    repository = RobotRepository(db)
+    repository = RobotEventRepository(db)
 
     db.add(Robot(robot_id="robot-000001"))
     db.flush()
@@ -134,7 +135,7 @@ def test_cleanup_deletes_old_events(db: Session) -> None:
 
 def test_claim_next_command_expires_overdue_pending_commands(db: Session) -> None:
     now = datetime(2026, 5, 2, tzinfo=UTC)
-    repository = RobotRepository(db)
+    repository = RobotCommandRepository(db)
 
     db.add(Robot(robot_id="robot-000001"))
     db.flush()
@@ -171,7 +172,7 @@ def test_claim_next_command_expires_overdue_pending_commands(db: Session) -> Non
 
 def test_claim_next_command_accepts_non_expiring_system_command(db: Session) -> None:
     now = datetime(2026, 5, 2, tzinfo=UTC)
-    repository = RobotRepository(db)
+    repository = RobotCommandRepository(db)
 
     db.add(Robot(robot_id="robot-000001"))
     db.flush()
@@ -198,7 +199,7 @@ def test_claim_next_command_accepts_non_expiring_system_command(db: Session) -> 
 
 def test_expire_pending_commands_ignores_non_expiring_system_commands(db: Session) -> None:
     now = datetime(2026, 5, 2, tzinfo=UTC)
-    repository = RobotRepository(db)
+    repository = RobotCommandRepository(db)
 
     db.add(Robot(robot_id="robot-000001"))
     db.flush()
@@ -272,7 +273,7 @@ def test_battery_recovery_command_ignores_previously_claimed_recovery(db: Sessio
 
 def test_list_commands_expires_overdue_pending_commands(db: Session) -> None:
     now = datetime(2026, 5, 2, tzinfo=UTC)
-    repository = RobotRepository(db)
+    repository = RobotCommandRepository(db)
 
     db.add(Robot(robot_id="robot-000001"))
     db.flush()
@@ -298,7 +299,7 @@ def test_list_commands_expires_overdue_pending_commands(db: Session) -> None:
 
 def test_list_commands_page_returns_newest_commands_first(db: Session) -> None:
     now = datetime(2026, 5, 2, tzinfo=UTC)
-    repository = RobotRepository(db)
+    repository = RobotCommandRepository(db)
 
     db.add(Robot(robot_id="robot-000001"))
     db.flush()
@@ -337,7 +338,7 @@ def test_list_commands_page_returns_newest_commands_first(db: Session) -> None:
 
 def test_list_events_page_returns_newest_events_first(db: Session) -> None:
     now = datetime(2026, 5, 2, tzinfo=UTC)
-    repository = RobotRepository(db)
+    repository = RobotEventRepository(db)
 
     db.add(Robot(robot_id="robot-000001"))
     db.flush()

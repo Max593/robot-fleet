@@ -41,16 +41,16 @@ Part of the project is calibrating heartbeat frequency, downtime duration, offli
 Current endpoints:
 
 ```text
-POST /robot/{robot_id}/ping
-POST /robot/{robot_id}/update
+POST /robots/{robot_id}/ping
+POST /robots/{robot_id}/update
 GET /robots/status
 GET /robots/{robot_id}
 GET /robots/{robot_id}/events
 POST /robots/{robot_id}/commands
 GET /robots/{robot_id}/commands
-POST /robot/{robot_id}/commands/battery-recovery
-GET /robot/{robot_id}/commands/next
-POST /robot/{robot_id}/commands/{command_id}/complete
+POST /robots/{robot_id}/commands/battery-recovery
+GET /robots/{robot_id}/commands/next
+POST /robots/{robot_id}/commands/{command_id}/complete
 ```
 
 `GET /robots/status` supports backend-side pagination and dashboard filters:
@@ -109,7 +109,7 @@ Event and command history are ordered newest first. The dashboard links to these
 Example update:
 
 ```bash
-curl -X POST http://localhost:8000/robot/robot-000001/update \
+curl -X POST http://localhost:8000/robots/robot-000001/update \
   -H "content-type: application/json" \
   -d '{"status":"running","battery_level":82}'
 ```
@@ -136,7 +136,7 @@ operator / system
 
 Dashboard-created commands are stored as `operator`. Low-battery recharge jobs created by the simulator are stored as `system` and use `expires_at = null`, so they do not expire while waiting to be claimed.
 
-The simulator claims pending commands through `GET /robot/{robot_id}/commands/next` and reports the outcome through `POST /robot/{robot_id}/commands/{command_id}/complete`. `COMMAND_EXPIRATION_SECONDS` controls how long a pending command may wait before being claimed. If the robot does not claim it in time, the backend marks it as `expired`.
+The simulator claims pending commands through `GET /robots/{robot_id}/commands/next` and reports the outcome through `POST /robots/{robot_id}/commands/{command_id}/complete`. `COMMAND_EXPIRATION_SECONDS` controls how long a pending command may wait before being claimed. If the robot does not claim it in time, the backend marks it as `expired`.
 
 `recharge_to_full` is a long-running simulator override. While it is active, the robot stays online, reports `idle`, skips random downtime, increases battery by `RECHARGE_STEP_PERCENT` every `RECHARGE_TICK_SECONDS`, then completes the command when battery reaches 100.
 
@@ -186,6 +186,16 @@ frontend/         React dashboard
 .infrastructure/  Docker Compose and service Dockerfiles
 docs/assets/      README images and project media
 ```
+
+Within `backend/app`, API routes, schemas, repositories, and services are split by responsibility:
+
+```text
+robots    current robot state, check-ins, fleet status
+commands  command queueing, claiming, completion, recovery jobs
+events    robot event history and cleanup
+```
+
+The SQLAlchemy models currently stay together in `models/robot.py` because `Robot`, `RobotCommand`, and `RobotEvent` are tightly related through foreign keys and relationships.
 
 ## Local Backend Development
 

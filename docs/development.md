@@ -142,6 +142,12 @@ The simulator claims pending commands through `GET /robots/{robot_id}/commands/n
 
 The current implementation keeps command override state in simulator memory. Command history is persisted in PostgreSQL, but active runtime overrides reset when the simulator container restarts.
 
+## Frontend API Contract
+
+FastAPI exposes an OpenAPI contract at `/openapi.json`. As the API surface grows, the frontend can use that contract to generate TypeScript types or a typed API client. This would reduce duplicated request/response definitions between the backend Pydantic schemas and frontend TypeScript code.
+
+OpenAPI generation should be considered a contract and typing improvement, not a replacement for clear frontend organization. Page, component, API module, and shared type boundaries still need to be designed explicitly.
+
 ## Database And Migrations
 
 PostgreSQL stores the current robot state, command history, and significant event history.

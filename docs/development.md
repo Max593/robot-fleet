@@ -148,6 +148,16 @@ FastAPI exposes an OpenAPI contract at `/openapi.json`. As the API surface grows
 
 OpenAPI generation should be considered a contract and typing improvement, not a replacement for clear frontend organization. Page, component, API module, and shared type boundaries still need to be designed explicitly.
 
+The current frontend keeps those boundaries explicit with small responsibility-based modules:
+
+```text
+api/         backend request helpers
+components/ reusable dashboard and detail UI pieces
+pages/      route-level dashboard and robot detail views
+types.ts    shared frontend data types
+utils/      formatting, routing, and theme helpers
+```
+
 ## Database And Migrations
 
 PostgreSQL stores the current robot state, command history, and significant event history.

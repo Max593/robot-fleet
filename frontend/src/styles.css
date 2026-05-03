@@ -296,10 +296,17 @@ h2 {
   margin-bottom: 10px;
 }
 
+.searchControls {
+  display: inline-flex;
+  align-items: center;
+  width: min(460px, 100%);
+  gap: 8px;
+}
+
 .searchBox {
   display: inline-flex;
   align-items: center;
-  width: min(360px, 100%);
+  width: 100%;
   height: 40px;
   gap: 8px;
   padding: 0 12px;
@@ -328,22 +335,32 @@ h2 {
   color: #8b97a8;
 }
 
-.searchClearButton {
-  display: inline-grid;
-  width: 26px;
-  height: 26px;
+.clearSearchButton {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
   flex: 0 0 auto;
-  place-items: center;
-  color: #667085;
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
+  gap: 6px;
+  padding: 0 12px;
+  color: #1d4f91;
+  background: #ffffff;
+  border: 1px solid #ccd6e4;
+  border-radius: 8px;
   cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 800;
 }
 
-.searchClearButton:hover {
+.clearSearchButton:hover:not(:disabled) {
   color: #1d4f91;
   background: #eef5ff;
+  border-color: #9bb9df;
+}
+
+.clearSearchButton:disabled {
+  color: #98a2b3;
+  background: #f8fafc;
+  cursor: not-allowed;
 }
 
 .pageSizeControl {
@@ -723,6 +740,45 @@ tr:last-child td {
   white-space: nowrap;
 }
 
+.jsonPreview {
+  display: grid;
+  gap: 8px;
+}
+
+.jsonPreviewToggle {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+  padding: 0;
+  color: #1d4f91;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.jsonPreviewToggle:hover .jsonPayload {
+  color: #1d4f91;
+  text-decoration: underline;
+}
+
+.jsonExpanded {
+  max-width: min(680px, 72vw);
+  max-height: 320px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  color: #18202f;
+  background: #f8fafc;
+  border: 1px solid #dfe4ec;
+  border-radius: 8px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+
 .modalBackdrop {
   position: fixed;
   inset: 0;
@@ -885,6 +941,20 @@ tr:last-child td {
   color: #e5edf8;
 }
 
+:root[data-theme="dark"] .jsonPreviewToggle {
+  color: #bfdbfe;
+}
+
+:root[data-theme="dark"] .jsonPreviewToggle:hover .jsonPayload {
+  color: #bfdbfe;
+}
+
+:root[data-theme="dark"] .jsonExpanded {
+  color: #e5edf8;
+  background: #0b1220;
+  border-color: #334155;
+}
+
 :root[data-theme="dark"] .searchBox input::placeholder {
   color: #64748b;
 }
@@ -896,13 +966,19 @@ tr:last-child td {
   box-shadow: 0 0 0 3px rgb(96 165 250 / 22%);
 }
 
-:root[data-theme="dark"] .searchClearButton {
-  color: #94a3b8;
+:root[data-theme="dark"] .clearSearchButton {
+  color: #bfdbfe;
+  background: #101827;
+  border-color: #334155;
 }
 
-:root[data-theme="dark"] .searchClearButton:hover {
-  color: #bfdbfe;
+:root[data-theme="dark"] .clearSearchButton:hover:not(:disabled) {
   background: #1e293b;
+}
+
+:root[data-theme="dark"] .clearSearchButton:disabled {
+  color: #64748b;
+  background: #111827;
 }
 
 :root[data-theme="dark"] th {
@@ -1095,6 +1171,10 @@ tr:last-child td {
   }
 
   .searchBox {
+    width: 100%;
+  }
+
+  .searchControls {
     width: 100%;
   }
 

@@ -26,6 +26,8 @@ class RobotFleetCounts:
     offline: int
     running: int
     idle: int
+    paused: int
+    charging: int
 
 
 class RobotRepository:
@@ -86,6 +88,8 @@ class RobotRepository:
         offline_condition = _offline_condition(offline_cutoff)
         running_condition = and_(online_condition, Robot.status == "running")
         idle_condition = and_(online_condition, Robot.status == "idle")
+        paused_condition = and_(online_condition, Robot.status == "paused")
+        charging_condition = and_(online_condition, Robot.status == "charging")
 
         stmt = select(
             func.count(Robot.id),
@@ -93,14 +97,18 @@ class RobotRepository:
             func.count(Robot.id).filter(offline_condition),
             func.count(Robot.id).filter(running_condition),
             func.count(Robot.id).filter(idle_condition),
+            func.count(Robot.id).filter(paused_condition),
+            func.count(Robot.id).filter(charging_condition),
         )
-        total, online, offline, running, idle = self.db.execute(stmt).one()
+        total, online, offline, running, idle, paused, charging = self.db.execute(stmt).one()
         return RobotFleetCounts(
             total=int(total),
             online=int(online),
             offline=int(offline),
             running=int(running),
             idle=int(idle),
+            paused=int(paused),
+            charging=int(charging),
         )
 
 
@@ -119,6 +127,10 @@ def _status_page_conditions(query: RobotStatusQuery) -> list[Any]:
         conditions.append(and_(_online_condition(query.offline_cutoff), Robot.status == "running"))
     elif query.status_filter == RobotStatusFilter.IDLE:
         conditions.append(and_(_online_condition(query.offline_cutoff), Robot.status == "idle"))
+    elif query.status_filter == RobotStatusFilter.PAUSED:
+        conditions.append(and_(_online_condition(query.offline_cutoff), Robot.status == "paused"))
+    elif query.status_filter == RobotStatusFilter.CHARGING:
+        conditions.append(and_(_online_condition(query.offline_cutoff), Robot.status == "charging"))
 
     return conditions
 

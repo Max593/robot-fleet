@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-RobotState = Literal["idle", "running"]
+RobotState = Literal["idle", "running", "paused", "charging"]
 
 
 class RobotStatusFilter(str, Enum):
@@ -13,6 +13,8 @@ class RobotStatusFilter(str, Enum):
     OFFLINE = "offline"
     RUNNING = "running"
     IDLE = "idle"
+    PAUSED = "paused"
+    CHARGING = "charging"
 
 
 class RobotUpdateRequest(BaseModel):
@@ -47,6 +49,8 @@ class RobotFleetSummary(BaseModel):
     offline: int
     running: int
     idle: int
+    paused: int
+    charging: int
 
 
 class RobotStatusListResponse(BaseModel):

@@ -88,6 +88,8 @@ def list_robot_status_page(
             offline=fleet_counts.offline,
             running=fleet_counts.running,
             idle=fleet_counts.idle,
+            paused=fleet_counts.paused,
+            charging=fleet_counts.charging,
         ),
     )
 

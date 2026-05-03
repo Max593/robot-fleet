@@ -14,12 +14,13 @@ async def run() -> None:
     configure_logging(settings.log_level)
     logging.info(
         "starting simulator robots=%s heartbeat_interval=%.1fs max_concurrency=%s "
-        "log_level=%s command_poll_interval=%.1fs",
+        "log_level=%s command_poll_interval=%.1fs system_work_probability=%.3f",
         settings.robot_count,
         settings.heartbeat_interval_seconds,
         settings.max_concurrent_requests,
         settings.log_level.upper(),
         settings.command_poll_interval_seconds,
+        settings.system_work_probability,
     )
 
     request_gate = asyncio.Semaphore(settings.max_concurrent_requests)

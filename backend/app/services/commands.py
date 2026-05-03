@@ -18,6 +18,7 @@ from app.schemas.command import (
     RobotCommandResponse,
     RobotCommandStatus,
     RobotCommandType,
+    RobotSystemWorkRequest,
 )
 from app.schemas.robot import RobotStatusPagination
 
@@ -48,6 +49,16 @@ def create_robot_command(
         origin=RobotCommandOrigin.OPERATOR,
         expires_at=now + timedelta(seconds=expiration_seconds),
     )
+    RobotEventRepository(db).add_event(
+        robot_id,
+        event_type="command_lifecycle",
+        payload={
+            "command_id": command.id,
+            "command_type": command.command_type,
+            "origin": command.origin,
+            "status": RobotCommandStatus.PENDING.value,
+        },
+    )
     db.commit()
     logger.info(
         "command created command_id=%s robot_id=%s command_type=%s origin=%s expires_at=%s",
@@ -56,6 +67,58 @@ def create_robot_command(
         command.command_type,
         command.origin,
         command.expires_at,
+    )
+    return _to_command_response(command)
+
+
+def queue_system_work_command(
+    db: Session,
+    robot_id: str,
+    request: RobotSystemWorkRequest,
+) -> RobotCommandResponse | None:
+    robot_repository = RobotRepository(db)
+    command_repository = RobotCommandRepository(db)
+    if robot_repository.get_robot(robot_id) is None:
+        logger.info(
+            "system work rejected robot_id=%s command_type=%s reason=robot_not_found",
+            robot_id,
+            request.command_type.value,
+        )
+        return None
+
+    open_command = command_repository.get_open_system_work_command(robot_id)
+    if open_command is not None:
+        logger.debug(
+            "system work already open command_id=%s robot_id=%s status=%s",
+            open_command.id,
+            open_command.robot_id,
+            open_command.status,
+        )
+        return _to_command_response(open_command)
+
+    command = command_repository.create_command(
+        robot_id=robot_id,
+        command_type=request.command_type,
+        payload=request.payload,
+        origin=RobotCommandOrigin.SYSTEM,
+        expires_at=None,
+    )
+    RobotEventRepository(db).add_event(
+        robot_id,
+        event_type="command_lifecycle",
+        payload={
+            "command_id": command.id,
+            "command_type": command.command_type,
+            "origin": command.origin,
+            "status": RobotCommandStatus.PENDING.value,
+        },
+    )
+    db.commit()
+    logger.debug(
+        "system work queued command_id=%s robot_id=%s command_type=%s",
+        command.id,
+        command.robot_id,
+        command.command_type,
     )
     return _to_command_response(command)
 
@@ -92,8 +155,18 @@ def queue_battery_recovery_command(
         },
         expires_at=None,
     )
+    RobotEventRepository(db).add_event(
+        robot_id,
+        event_type="command_lifecycle",
+        payload={
+            "command_id": command.id,
+            "command_type": command.command_type,
+            "origin": command.origin,
+            "status": RobotCommandStatus.PENDING.value,
+        },
+    )
     db.commit()
-    logger.info(
+    logger.debug(
         "battery recovery queued command_id=%s robot_id=%s battery_level=%s threshold_percent=%s",
         command.id,
         command.robot_id,
@@ -105,12 +178,26 @@ def queue_battery_recovery_command(
 
 def claim_next_robot_command(db: Session, robot_id: str) -> RobotCommandNextResponse:
     now = datetime.now(UTC)
+    robot = RobotRepository(db).get_robot(robot_id)
+    only_resume = robot is not None and robot.status == "paused"
     repository = RobotCommandRepository(db)
-    command = repository.claim_next_command(robot_id, claimed_at=now)
+    command = repository.claim_next_command(robot_id, claimed_at=now, only_resume=only_resume)
+    if command is not None:
+        RobotEventRepository(db).add_event(
+            robot_id,
+            event_type="command_lifecycle",
+            payload={
+                "command_id": command.id,
+                "command_type": command.command_type,
+                "origin": command.origin,
+                "status": RobotCommandStatus.EXECUTING.value,
+            },
+        )
     db.commit()
     if command is not None:
-        logger.info(
-            "command claimed command_id=%s robot_id=%s command_type=%s origin=%s",
+        _log_command(
+            command.origin,
+            "command executing command_id=%s robot_id=%s command_type=%s origin=%s",
             command.id,
             command.robot_id,
             command.command_type,
@@ -142,7 +229,7 @@ def complete_robot_command(
     )
     if command is None:
         db.rollback()
-        logger.info("command completion rejected command_id=%s robot_id=%s reason=not_found", command_id, robot_id)
+        logger.warning("command completion rejected command_id=%s robot_id=%s reason=not_found", command_id, robot_id)
         return None
 
     event_repository.add_event(
@@ -150,6 +237,7 @@ def complete_robot_command(
         event_type="command_result",
         payload={
             "command_id": command_id,
+            "command_type": command.command_type,
             "origin": command.origin,
             "status": command_status.value,
             "result": request.result,
@@ -157,12 +245,21 @@ def complete_robot_command(
         },
     )
     db.commit()
-    logger.info(
-        "command completed command_id=%s robot_id=%s status=%s",
-        command.id,
-        command.robot_id,
-        command.status,
-    )
+    if command_status == RobotCommandStatus.FAILED:
+        logger.warning(
+            "command failed command_id=%s robot_id=%s error=%s",
+            command.id,
+            command.robot_id,
+            command.error_message,
+        )
+    else:
+        _log_command(
+            command.origin,
+            "command completed command_id=%s robot_id=%s status=%s",
+            command.id,
+            command.robot_id,
+            command.status,
+        )
     return _to_command_response(command)
 
 
@@ -225,3 +322,10 @@ def _ensure_aware(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value
+
+
+def _log_command(origin: str, message: str, *args: object) -> None:
+    if origin == RobotCommandOrigin.SYSTEM.value:
+        logger.debug(message, *args)
+    else:
+        logger.info(message, *args)

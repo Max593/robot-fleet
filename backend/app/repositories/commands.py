@@ -46,6 +46,30 @@ class RobotCommandRepository:
         )
         return self.db.execute(stmt).scalar_one_or_none()
 
+    def get_open_system_work_command(self, robot_id: str) -> RobotCommand | None:
+        open_statuses = (
+            RobotCommandStatus.PENDING.value,
+            RobotCommandStatus.CLAIMED.value,
+            RobotCommandStatus.EXECUTING.value,
+        )
+        stmt = (
+            select(RobotCommand)
+            .where(
+                RobotCommand.robot_id == robot_id,
+                RobotCommand.origin == RobotCommandOrigin.SYSTEM.value,
+                RobotCommand.command_type.in_(
+                    (
+                        RobotCommandType.RUN_DIAGNOSTIC.value,
+                        RobotCommandType.RETURN_TO_BASE.value,
+                    )
+                ),
+                RobotCommand.status.in_(open_statuses),
+            )
+            .order_by(RobotCommand.created_at, RobotCommand.id)
+            .limit(1)
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
+
     def list_commands(self, robot_id: str, limit: int, now: datetime) -> list[RobotCommand]:
         self.expire_pending_commands(now)
         stmt = (
@@ -73,15 +97,19 @@ class RobotCommandRepository:
         )
         return list(self.db.execute(stmt).scalars().all())
 
-    def claim_next_command(self, robot_id: str, claimed_at: datetime) -> RobotCommand | None:
+    def claim_next_command(self, robot_id: str, claimed_at: datetime, only_resume: bool = False) -> RobotCommand | None:
         self.expire_pending_commands(claimed_at)
+        conditions = [
+            RobotCommand.robot_id == robot_id,
+            RobotCommand.status == RobotCommandStatus.PENDING.value,
+            or_(RobotCommand.expires_at.is_(None), RobotCommand.expires_at > claimed_at),
+        ]
+        if only_resume:
+            conditions.append(RobotCommand.command_type == RobotCommandType.RESUME.value)
+
         stmt = (
             select(RobotCommand)
-            .where(
-                RobotCommand.robot_id == robot_id,
-                RobotCommand.status == RobotCommandStatus.PENDING.value,
-                or_(RobotCommand.expires_at.is_(None), RobotCommand.expires_at > claimed_at),
-            )
+            .where(*conditions)
             .order_by(RobotCommand.created_at, RobotCommand.id)
             .with_for_update(skip_locked=True)
             .limit(1)
@@ -90,7 +118,7 @@ class RobotCommandRepository:
         if command is None:
             return None
 
-        command.status = RobotCommandStatus.CLAIMED.value
+        command.status = RobotCommandStatus.EXECUTING.value
         command.claimed_at = claimed_at
         self.db.flush()
         self.db.refresh(command)

@@ -32,7 +32,7 @@ From there, the project can grow into more operational workflows: sending comman
 - Records significant robot events for audit/history without logging every heartbeat
 - Provides a dashboard with backend-side search, pagination, page-size controls, and status filters
 - Provides per-robot detail pages with current state, event logs, and command history
-- Queues one-robot commands, including simulated recharge jobs, and tracks command completion history
+- Queues one-robot commands, executes simulated work, and tracks command lifecycle history
 - Records low-battery recovery as system-generated recharge commands
 - Runs locally with Docker Compose
 - Applies database migrations automatically on backend startup

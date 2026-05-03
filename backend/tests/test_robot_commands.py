@@ -9,14 +9,17 @@ from app.db.base import Base
 from app.models.robot import Robot, RobotCommand, RobotEvent
 from app.repositories.commands import RobotCommandRepository
 from app.repositories.events import RobotEventRepository
+from app.repositories.robots import RobotRepository, RobotStatusQuery
 from app.schemas.command import (
     RobotBatteryRecoveryRequest,
     RobotCommandCreateRequest,
     RobotCommandOrigin,
     RobotCommandStatus,
     RobotCommandType,
+    RobotSystemWorkRequest,
 )
-from app.services.commands import queue_battery_recovery_command
+from app.schemas.robot import RobotStatusFilter
+from app.services.commands import queue_battery_recovery_command, queue_system_work_command
 
 
 @pytest.fixture
@@ -41,6 +44,22 @@ def test_pause_for_accepts_bounded_duration() -> None:
     )
 
     assert request.payload == {"duration_seconds": 60}
+
+
+def test_command_payload_rejects_requested_failure_reason() -> None:
+    with pytest.raises(ValidationError):
+        RobotCommandCreateRequest(
+            command_type=RobotCommandType.RUN_DIAGNOSTIC,
+            payload={"failure_reason": "sensor_error"},
+        )
+
+
+def test_system_work_payload_rejects_requested_failure_reason() -> None:
+    with pytest.raises(ValidationError):
+        RobotSystemWorkRequest(
+            command_type=RobotCommandType.RUN_DIAGNOSTIC,
+            payload={"failure_reason": "sensor_error"},
+        )
 
 
 def test_recharge_to_full_does_not_require_payload() -> None:
@@ -133,6 +152,34 @@ def test_cleanup_deletes_old_events(db: Session) -> None:
     assert remaining_events == [2]
 
 
+def test_robot_status_summary_and_filter_include_charging(db: Session) -> None:
+    now = datetime(2026, 5, 2, tzinfo=UTC)
+    repository = RobotRepository(db)
+
+    db.add_all(
+        [
+            Robot(robot_id="robot-000001", status="charging", last_seen_at=now),
+            Robot(robot_id="robot-000002", status="idle", last_seen_at=now),
+            Robot(robot_id="robot-000003", status="charging", last_seen_at=now - timedelta(minutes=5)),
+        ]
+    )
+    db.commit()
+
+    query = RobotStatusQuery(
+        page=1,
+        page_size=10,
+        search=None,
+        status_filter=RobotStatusFilter.CHARGING,
+        offline_cutoff=now - timedelta(seconds=45),
+    )
+
+    counts = repository.get_fleet_counts(query.offline_cutoff)
+    robots = repository.list_status_page(query)
+
+    assert counts.charging == 1
+    assert [robot.robot_id for robot in robots] == ["robot-000001"]
+
+
 def test_claim_next_command_expires_overdue_pending_commands(db: Session) -> None:
     now = datetime(2026, 5, 2, tzinfo=UTC)
     repository = RobotCommandRepository(db)
@@ -167,7 +214,7 @@ def test_claim_next_command_expires_overdue_pending_commands(db: Session) -> Non
     statuses = db.execute(select(RobotCommand.status).order_by(RobotCommand.id)).scalars().all()
     assert command is not None
     assert command.id == 2
-    assert statuses == [RobotCommandStatus.EXPIRED.value, RobotCommandStatus.CLAIMED.value]
+    assert statuses == [RobotCommandStatus.EXPIRED.value, RobotCommandStatus.EXECUTING.value]
 
 
 def test_claim_next_command_accepts_non_expiring_system_command(db: Session) -> None:
@@ -194,7 +241,44 @@ def test_claim_next_command_accepts_non_expiring_system_command(db: Session) -> 
 
     assert command is not None
     assert command.id == 1
-    assert command.status == RobotCommandStatus.CLAIMED.value
+    assert command.status == RobotCommandStatus.EXECUTING.value
+
+
+def test_claim_next_command_can_limit_paused_robots_to_resume(db: Session) -> None:
+    now = datetime(2026, 5, 2, tzinfo=UTC)
+    repository = RobotCommandRepository(db)
+
+    db.add(Robot(robot_id="robot-000001", status="paused"))
+    db.flush()
+    db.add_all(
+        [
+            RobotCommand(
+                id=1,
+                robot_id="robot-000001",
+                command_type="run_diagnostic",
+                status="pending",
+                created_at=now - timedelta(minutes=1),
+                expires_at=now + timedelta(minutes=2),
+            ),
+            RobotCommand(
+                id=2,
+                robot_id="robot-000001",
+                command_type="resume",
+                status="pending",
+                created_at=now,
+                expires_at=now + timedelta(minutes=2),
+            ),
+        ]
+    )
+    db.commit()
+
+    command = repository.claim_next_command("robot-000001", claimed_at=now, only_resume=True)
+    db.commit()
+
+    statuses = db.execute(select(RobotCommand.status).order_by(RobotCommand.id)).scalars().all()
+    assert command is not None
+    assert command.id == 2
+    assert statuses == [RobotCommandStatus.PENDING.value, RobotCommandStatus.EXECUTING.value]
 
 
 def test_expire_pending_commands_ignores_non_expiring_system_commands(db: Session) -> None:
@@ -269,6 +353,25 @@ def test_battery_recovery_command_ignores_previously_claimed_recovery(db: Sessio
     assert command.id != 1
     assert command.status == RobotCommandStatus.PENDING
     assert command.origin == RobotCommandOrigin.SYSTEM
+
+
+def test_system_work_command_is_system_origin_and_deduplicated(db: Session) -> None:
+    db.add(Robot(robot_id="robot-000001", battery_level=80))
+    db.commit()
+
+    request = RobotSystemWorkRequest(
+        command_type=RobotCommandType.RETURN_TO_BASE,
+        payload={"reason": "autonomous_schedule"},
+    )
+
+    first_command = queue_system_work_command(db, "robot-000001", request)
+    second_command = queue_system_work_command(db, "robot-000001", request)
+
+    assert first_command is not None
+    assert second_command is not None
+    assert first_command.id == second_command.id
+    assert first_command.origin == RobotCommandOrigin.SYSTEM
+    assert first_command.command_type == RobotCommandType.RETURN_TO_BASE
 
 
 def test_list_commands_expires_overdue_pending_commands(db: Session) -> None:

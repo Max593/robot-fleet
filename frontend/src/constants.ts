@@ -25,5 +25,7 @@ export const initialSummary: FleetSummary = {
   online: 0,
   offline: 0,
   running: 0,
-  idle: 0
+  idle: 0,
+  paused: 0,
+  charging: 0
 };

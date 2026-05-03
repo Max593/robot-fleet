@@ -1,6 +1,6 @@
 export type Robot = {
   robot_id: string;
-  status: "idle" | "running";
+  status: "idle" | "running" | "paused" | "charging";
   battery_level: number | null;
   last_seen_at: string | null;
   last_seen_seconds_ago: number | null;
@@ -20,6 +20,8 @@ export type FleetSummary = {
   offline: number;
   running: number;
   idle: number;
+  paused: number;
+  charging: number;
 };
 
 export type RobotsResponse = {
@@ -55,7 +57,7 @@ export type RobotCommand = {
   command_type: CommandType;
   origin: "operator" | "system";
   payload: Record<string, unknown>;
-  status: "pending" | "claimed" | "completed" | "failed" | "expired" | "cancelled";
+  status: "pending" | "claimed" | "executing" | "completed" | "failed" | "expired" | "cancelled";
   result: Record<string, unknown> | null;
   error_message: string | null;
   created_at: string;
@@ -69,7 +71,7 @@ export type RobotCommandsResponse = {
   pagination: Pagination;
 };
 
-export type StatusFilter = "all" | "online" | "offline" | "running" | "idle";
+export type StatusFilter = "all" | "online" | "offline" | "running" | "idle" | "paused" | "charging";
 
 export type Theme = "light" | "dark";
 

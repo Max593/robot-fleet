@@ -4,7 +4,7 @@ This page collects the lower-level details for running and extending Robot Fleet
 
 ## Simulation Model
 
-The simulator is intentionally configurable. The current settings aim to make the dashboard active while keeping local load bounded:
+The simulator is intentionally configurable. The current settings aim to make the dashboard active while keeping local load bounded. Command and event retention are both set to 1 day for testing so generated history does not accumulate for long local runs:
 
 ```text
 ROBOT_COUNT=5000
@@ -15,26 +15,46 @@ MIN_DOWNTIME_SECONDS=60
 MAX_DOWNTIME_SECONDS=120
 OFFLINE_AFTER_SECONDS=45
 LOG_LEVEL=INFO
-COMMAND_RETENTION_DAYS=30
+COMMAND_RETENTION_DAYS=1
 COMMAND_EXPIRATION_SECONDS=120
 EVENT_RETENTION_DAYS=1
+DATABASE_POOL_SIZE=20
+DATABASE_MAX_OVERFLOW=30
+DATABASE_POOL_TIMEOUT=30
 COMMAND_POLL_INTERVAL_SECONDS=30
+SYSTEM_WORK_PROBABILITY=0.01
+COMMAND_EXECUTION_TICK_SECONDS=5
+COMMAND_BATTERY_DRAIN_MIN_PERCENT=2
+COMMAND_BATTERY_DRAIN_MAX_PERCENT=5
+COMMAND_FAILURE_PROBABILITY=0.03
+COMMAND_MIN_BATTERY_PERCENT=10
 RECHARGE_TICK_SECONDS=5
 RECHARGE_STEP_PERCENT=10
 LOW_BATTERY_THRESHOLD_PERCENT=15
 ```
 
-Each robot periodically sends a heartbeat and a state update. Status and battery level change locally inside the simulator. Running robots drain battery faster, idle robots drain battery slowly, and battery is recovered only through recharge behavior. Downtime is simulated by pausing a robot loop so it stops sending updates for a short period.
+Each robot periodically sends a heartbeat and a state update. Robot status is derived from explicit state:
+
+```text
+idle     online and available for work
+running  online and executing work
+paused   online but intentionally blocked from normal work
+charging online and recovering battery
+```
+
+Running robots drain battery faster, idle and paused robots drain battery slowly, and battery is recovered only through charging behavior. Downtime is simulated by pausing a robot loop so it stops sending updates for a short period.
 
 `MAX_CONCURRENT_REQUESTS` limits simultaneous simulator HTTP requests even when thousands of robot tasks are running.
 
-Robots also poll for queued commands. Command overrides take priority over autonomous behavior while they are active, then the robot returns to the regular simulator loop.
+Robots also poll for queued commands. Executable commands run for a simulated duration, update robot state while they run, drain battery, and then complete or fail. Autonomous robot activity is also recorded as system-created commands instead of silently flipping the robot into `running`.
 
-When a robot battery reaches `LOW_BATTERY_THRESHOLD_PERCENT`, the simulator asks the backend to queue a non-expiring system `recharge_to_full` command if one is not already pending or claimed. This records autonomous recovery as command history instead of silently changing battery state.
+When a robot battery reaches `LOW_BATTERY_THRESHOLD_PERCENT`, the simulator asks the backend to queue a non-expiring system `recharge_to_full` command if one is not already pending. This records autonomous recovery as command history instead of silently changing battery state.
+
+`SYSTEM_WORK_PROBABILITY` controls how often an idle robot asks the backend to queue autonomous system work such as `run_diagnostic` or `return_to_base`. `COMMAND_FAILURE_PROBABILITY` controls random command-level failures. Command failures are simulator-owned outcomes rather than operator-selected inputs; low battery can also make executable work fail.
 
 Downtime must be longer than the backend `OFFLINE_AFTER_SECONDS` threshold to become visible as offline in the dashboard. The default values use a 45-second offline threshold and 60-120 second downtime windows so short outages are visible but robots return quickly.
 
-Part of the project is calibrating heartbeat frequency, downtime duration, offline thresholds, and state-change probability so the local simulation behaves like a plausible robot fleet rather than a fixed script.
+Part of the project is calibrating heartbeat frequency, downtime duration, offline thresholds, autonomous work probability, and command failure probability so the local simulation behaves like a plausible robot fleet rather than a fixed script. The current autonomous work probability is intentionally conservative and should be rebalanced as the simulation model evolves.
 
 ## API Surface
 
@@ -49,6 +69,7 @@ GET /robots/{robot_id}/events
 POST /robots/{robot_id}/commands
 GET /robots/{robot_id}/commands
 POST /robots/{robot_id}/commands/battery-recovery
+POST /robots/{robot_id}/commands/system-work
 GET /robots/{robot_id}/commands/next
 POST /robots/{robot_id}/commands/{command_id}/complete
 ```
@@ -70,10 +91,10 @@ Supported page sizes in the dashboard are:
 Supported filter values are:
 
 ```text
-all / online / offline / running / idle
+all / online / offline / running / idle / paused / charging
 ```
 
-The `running` and `idle` filters currently apply only to robots that are online. Offline robots retain their last reported status in the database, but they are grouped by connectivity first in the dashboard.
+The `running`, `idle`, `paused`, and `charging` filters currently apply only to robots that are online. Offline robots retain their last reported status in the database, but they are grouped by connectivity first in the dashboard.
 
 The response includes the current page, pagination metadata, and global fleet summary counts:
 
@@ -91,7 +112,9 @@ The response includes the current page, pagination metadata, and global fleet su
     "online": 4864,
     "offline": 136,
     "running": 699,
-    "idle": 4165
+    "idle": 4085,
+    "paused": 80,
+    "charging": 0
   }
 }
 ```
@@ -136,9 +159,21 @@ operator / system
 
 Dashboard-created commands are stored as `operator`. Low-battery recharge jobs created by the simulator are stored as `system` and use `expires_at = null`, so they do not expire while waiting to be claimed.
 
-The simulator claims pending commands through `GET /robots/{robot_id}/commands/next` and reports the outcome through `POST /robots/{robot_id}/commands/{command_id}/complete`. `COMMAND_EXPIRATION_SECONDS` controls how long a pending command may wait before being claimed. If the robot does not claim it in time, the backend marks it as `expired`.
+The simulator claims pending commands through `GET /robots/{robot_id}/commands/next` and reports the outcome through `POST /robots/{robot_id}/commands/{command_id}/complete`. Claimed commands move into `executing` while the simulator applies them. `COMMAND_EXPIRATION_SECONDS` controls how long an operator-created pending command may wait before being claimed. If the robot does not claim it in time, the backend marks it as `expired`.
 
-`recharge_to_full` is a long-running simulator override. While it is active, the robot stays online, reports `idle`, skips random downtime, increases battery by `RECHARGE_STEP_PERCENT` every `RECHARGE_TICK_SECONDS`, then completes the command when battery reaches 100.
+`pause_for` and `pause_until_resumed` make the robot report `paused`, but it continues checking in and remains online. A paused robot does not claim normal work. It can claim `resume`, and `pause_for` also completes when its duration elapses.
+
+`run_diagnostic` and `return_to_base` are executable simulated work. While active, the robot reports `running`, skips random downtime, drains battery, and completes or fails after the configured duration.
+
+`recharge_to_full` is a long-running simulator override. While it is active, the robot stays online, reports `charging`, skips random downtime, increases battery by `RECHARGE_STEP_PERCENT` every `RECHARGE_TICK_SECONDS`, then completes the command when battery reaches 100.
+
+Supported command failure reasons are:
+
+```text
+navigation_blocked / low_battery / sensor_error / timeout / diagnostic_failed
+```
+
+The simulator chooses these reasons when a command fails. API callers cannot request a specific `payload.failure_reason`, because command failure should reflect simulated runtime conditions rather than user selection.
 
 The current implementation keeps command override state in simulator memory. Command history is persisted in PostgreSQL, but active runtime overrides reset when the simulator container restarts.
 
@@ -165,7 +200,7 @@ PostgreSQL stores the current robot state, command history, and significant even
 Current tables:
 
 - `robots`: latest known state for each robot
-- `robot_events`: significant event history such as command results
+- `robot_events`: significant event history such as command lifecycle changes and command results
 - `robot_commands`: command queue, lifecycle state, payloads, results, and retention history
 
 `COMMAND_RETENTION_DAYS` controls command cleanup. On backend startup, terminal command rows older than the retention window are deleted. Active commands are not deleted by cleanup.
@@ -182,7 +217,7 @@ alembic upgrade head
 
 before starting Uvicorn.
 
-Robot status is currently stored as a string column with a database `CHECK` constraint. That keeps early migrations simple. If the status model grows beyond `idle` and `running`, a good next step is introducing a shared Python `RobotStatus(str, Enum)` for application typing, then deciding whether the database should remain string-plus-check or move to a native PostgreSQL enum.
+Robot status is currently stored as a string column with a database `CHECK` constraint for `idle`, `running`, `paused`, and `charging`. If the status model grows further, a good next step is introducing a shared Python `RobotStatus(str, Enum)` for application typing, then deciding whether the database should remain string-plus-check or move to a native PostgreSQL enum.
 
 ## Tech Stack
 

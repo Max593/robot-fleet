@@ -12,6 +12,7 @@ from app.schemas.command import (
     RobotCommandListResponse,
     RobotCommandNextResponse,
     RobotCommandResponse,
+    RobotSystemWorkRequest,
 )
 from app.services.commands import (
     claim_next_robot_command,
@@ -19,6 +20,7 @@ from app.services.commands import (
     create_robot_command,
     list_robot_command_page,
     queue_battery_recovery_command,
+    queue_system_work_command,
 )
 
 router = APIRouter(tags=["commands"])
@@ -75,6 +77,22 @@ def queue_battery_recovery(
     db: Session = Depends(get_db),
 ) -> RobotCommandResponse:
     command = queue_battery_recovery_command(db, robot_id, payload)
+    if command is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Robot not found")
+    return command
+
+
+@router.post(
+    "/robots/{robot_id}/commands/system-work",
+    response_model=RobotCommandResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def queue_system_work(
+    robot_id: str,
+    payload: RobotSystemWorkRequest,
+    db: Session = Depends(get_db),
+) -> RobotCommandResponse:
+    command = queue_system_work_command(db, robot_id, payload)
     if command is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Robot not found")
     return command

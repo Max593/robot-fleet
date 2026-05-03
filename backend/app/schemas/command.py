@@ -19,6 +19,7 @@ class RobotCommandType(str, Enum):
 class RobotCommandStatus(str, Enum):
     PENDING = "pending"
     CLAIMED = "claimed"
+    EXECUTING = "executing"
     COMPLETED = "completed"
     FAILED = "failed"
     EXPIRED = "expired"
@@ -41,6 +42,9 @@ class RobotCommandCreateRequest(BaseModel):
             if not isinstance(duration_seconds, int) or duration_seconds < 1 or duration_seconds > 3600:
                 raise ValueError("pause_for requires payload.duration_seconds between 1 and 3600")
 
+        if "failure_reason" in self.payload:
+            raise ValueError("payload.failure_reason is simulator-owned and cannot be requested")
+
         return self
 
 
@@ -53,6 +57,21 @@ class RobotCommandCompleteRequest(BaseModel):
 class RobotBatteryRecoveryRequest(BaseModel):
     battery_level: int = Field(ge=0, le=100)
     threshold_percent: int = Field(ge=1, le=100)
+
+
+class RobotSystemWorkRequest(BaseModel):
+    command_type: RobotCommandType
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_system_command(self) -> "RobotSystemWorkRequest":
+        if self.command_type not in {RobotCommandType.RUN_DIAGNOSTIC, RobotCommandType.RETURN_TO_BASE}:
+            raise ValueError("system work supports run_diagnostic and return_to_base")
+
+        if "failure_reason" in self.payload:
+            raise ValueError("payload.failure_reason is simulator-owned and cannot be requested")
+
+        return self
 
 
 class RobotCommandResponse(BaseModel):

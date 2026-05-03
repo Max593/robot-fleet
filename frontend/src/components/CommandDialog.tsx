@@ -27,7 +27,7 @@ export function CommandDialog({ robot, isSending, error, onClose, onSend }: Comm
   }
 
   const sendCommand = () => {
-    const payload =
+    const payload: Record<string, unknown> =
       selectedCommand === "pause_for"
         ? {
             duration_seconds: pauseDuration
@@ -51,7 +51,10 @@ export function CommandDialog({ robot, isSending, error, onClose, onSend }: Comm
 
         <label className="fieldControl">
           <span>Command</span>
-          <select value={selectedCommand} onChange={(event) => setSelectedCommand(event.target.value as CommandType)}>
+          <select
+            value={selectedCommand}
+            onChange={(event) => setSelectedCommand(event.target.value as CommandType)}
+          >
             {(Object.keys(commandLabels) as CommandType[]).map((commandType) => (
               <option key={commandType} value={commandType}>
                 {commandLabels[commandType]}

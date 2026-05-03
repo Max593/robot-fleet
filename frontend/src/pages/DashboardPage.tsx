@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, CirclePause, CirclePlay, Search, Terminal, Wifi, WifiOff, X } from "lucide-react";
+import {
+  Activity,
+  BatteryCharging,
+  CirclePause,
+  CirclePlay,
+  OctagonPause,
+  Search,
+  Terminal,
+  Wifi,
+  WifiOff,
+  X
+} from "lucide-react";
 import { getFleetStatus } from "../api/robots";
 import { initialPagination, initialSummary, pageSizeOptions } from "../constants";
 import { BatteryCell } from "../components/BatteryCell";
@@ -144,6 +155,22 @@ export function DashboardPage({
           icon={<CirclePause size={18} />}
           isActive={statusFilter === "idle"}
           onClick={() => updateStatusFilter("idle")}
+        />
+        <Metric
+          label="Charging"
+          value={summary.charging}
+          tone="cyan"
+          icon={<BatteryCharging size={18} />}
+          isActive={statusFilter === "charging"}
+          onClick={() => updateStatusFilter("charging")}
+        />
+        <Metric
+          label="Paused"
+          value={summary.paused}
+          tone="purple"
+          icon={<OctagonPause size={18} />}
+          isActive={statusFilter === "paused"}
+          onClick={() => updateStatusFilter("paused")}
         />
       </section>
 

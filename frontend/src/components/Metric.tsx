@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 type MetricProps = {
   label: string;
   value: number;
-  tone: "blue" | "green" | "red" | "amber" | "slate";
+  tone: "blue" | "green" | "red" | "amber" | "slate" | "purple" | "cyan";
   icon: ReactNode;
   isActive: boolean;
   onClick: () => void;

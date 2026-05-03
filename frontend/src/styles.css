@@ -123,7 +123,7 @@ h2 {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px;
   margin: 24px 0;
 }
@@ -204,6 +204,16 @@ h2 {
 .metric-slate .metricIcon {
   color: #4b5563;
   background: #eef0f4;
+}
+
+.metric-purple .metricIcon {
+  color: #6b21a8;
+  background: #f3e8ff;
+}
+
+.metric-cyan .metricIcon {
+  color: #0e7490;
+  background: #e0f7ff;
 }
 
 .notice {
@@ -489,6 +499,16 @@ tr:last-child td {
   background: #eef0f4;
 }
 
+.state-paused {
+  color: #6b21a8;
+  background: #f3e8ff;
+}
+
+.state-charging {
+  color: #0e7490;
+  background: #e0f7ff;
+}
+
 .batteryCell {
   min-width: 132px;
   color: #344054;
@@ -724,7 +744,8 @@ tr:last-child td {
 }
 
 .commandStatus-pending,
-.commandStatus-claimed {
+.commandStatus-claimed,
+.commandStatus-executing {
   color: #8a4b00;
   background: #fff3d4;
 }
@@ -1052,7 +1073,8 @@ tr:last-child td {
 }
 
 :root[data-theme="dark"] .commandStatus-pending,
-:root[data-theme="dark"] .commandStatus-claimed {
+:root[data-theme="dark"] .commandStatus-claimed,
+:root[data-theme="dark"] .commandStatus-executing {
   color: #fcd34d;
   background: #78350f;
 }
@@ -1079,6 +1101,18 @@ tr:last-child td {
 :root[data-theme="dark"] .state-idle {
   color: #cbd5e1;
   background: #1e293b;
+}
+
+:root[data-theme="dark"] .metric-purple .metricIcon,
+:root[data-theme="dark"] .state-paused {
+  color: #d8b4fe;
+  background: #581c87;
+}
+
+:root[data-theme="dark"] .metric-cyan .metricIcon,
+:root[data-theme="dark"] .state-charging {
+  color: #67e8f9;
+  background: #164e63;
 }
 
 :root[data-theme="dark"] .batteryBar {

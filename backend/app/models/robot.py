@@ -13,7 +13,7 @@ big_integer_id_type = BigInteger().with_variant(Integer(), "sqlite")
 class Robot(Base):
     __tablename__ = "robots"
     __table_args__ = (
-        CheckConstraint("status IN ('idle', 'running')", name="ck_robots_status"),
+        CheckConstraint("status IN ('idle', 'running', 'paused', 'charging')", name="ck_robots_status"),
         CheckConstraint(
             "battery_level IS NULL OR (battery_level >= 0 AND battery_level <= 100)",
             name="ck_robots_battery_level",
@@ -48,7 +48,7 @@ class RobotEvent(Base):
     __tablename__ = "robot_events"
     __table_args__ = (
         CheckConstraint(
-            "event_type IN ('heartbeat', 'status_update', 'offline_detected', 'command_result')",
+            "event_type IN ('heartbeat', 'status_update', 'offline_detected', 'command_lifecycle', 'command_result')",
             name="ck_robot_events_event_type",
         ),
         Index("ix_robot_events_robot_created_at", "robot_id", "created_at"),
@@ -73,7 +73,7 @@ class RobotCommand(Base):
             name="ck_robot_commands_command_type",
         ),
         CheckConstraint(
-            "status IN ('pending', 'claimed', 'completed', 'failed', 'expired', 'cancelled')",
+            "status IN ('pending', 'claimed', 'executing', 'completed', 'failed', 'expired', 'cancelled')",
             name="ck_robot_commands_status",
         ),
         CheckConstraint("origin IN ('operator', 'system')", name="ck_robot_commands_origin"),

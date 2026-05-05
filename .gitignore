@@ -12,6 +12,7 @@ node_modules/
 dist/
 *.egg-info/
 .env
+.infrastructure/*.env
 .DS_Store
 .codex
 .description/

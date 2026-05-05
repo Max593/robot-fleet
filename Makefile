@@ -1,12 +1,15 @@
 COMPOSE = docker compose -f .infrastructure/docker-compose.yml
 
-.PHONY: up down logs backend-test frontend-typecheck frontend-build lint
+.PHONY: up up-tunnel down logs backend-test frontend-typecheck frontend-build lint
 
 up:
 	$(COMPOSE) up --build
 
+up-tunnel:
+	$(COMPOSE) --env-file .infrastructure/cloudflared-hosts.env --profile tunnel up --build
+
 down:
-	$(COMPOSE) down
+	$(COMPOSE) --profile tunnel down
 
 logs:
 	$(COMPOSE) logs -f

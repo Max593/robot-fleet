@@ -31,7 +31,7 @@ services:
       DATABASE_POOL_SIZE: "20"
       DATABASE_MAX_OVERFLOW: "30"
       DATABASE_POOL_TIMEOUT: "30"
-      CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
     ports:
       - "8000:8000"
     depends_on:
@@ -77,10 +77,27 @@ services:
       context: ..
       dockerfile: .infrastructure/frontend.Dockerfile
     environment:
-      VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
     ports:
       - "5173:5173"
     depends_on:
+      backend:
+        condition: service_healthy
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: robot-fleet-tunnel
+    profiles:
+      - tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file:
+      - ./cloudflared.env
+      - ./cloudflared-hosts.env
+    depends_on:
+      frontend:
+        condition: service_started
       backend:
         condition: service_healthy
 
